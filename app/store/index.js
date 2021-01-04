@@ -5,6 +5,7 @@ import FSStorage from 'redux-persist-fs-storage';
 import autoMergeLevel2 from 'redux-persist/lib/stateReconciler/autoMergeLevel2';
 import rootReducer from '../reducers';
 import AppConstants from '../core/AppConstants';
+import Logger from '../util/Logger';
 import { isEmpty } from 'lodash';
 
 const migrations = {
@@ -52,7 +53,7 @@ const migrations = {
 					return asyncState;
 				}
 			} catch (error) {
-				// TODO: properly handle error case
+				Logger.error(error, 'Migration: Failed to run storage migration.');
 			}
 		}
 	}
