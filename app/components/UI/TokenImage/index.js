@@ -1,67 +1,55 @@
-import React, { Component } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { StyleSheet, View } from 'react-native';
 import AssetIcon from '../AssetIcon';
 import Identicon from '../Identicon';
-import contractMap from '@metamask/contract-metadata';
-import { toChecksumAddress } from 'ethereumjs-util';
+import isUrl from 'is-url';
+import { connect } from 'react-redux';
+import { getTokenList } from '../../../reducers/tokens';
 
 const styles = StyleSheet.create({
-	itemLogoWrapper: {
-		width: 50,
-		height: 50
-	},
-	roundImage: {
-		overflow: 'hidden',
-		borderRadius: 25
-	}
+  itemLogoWrapper: {
+    width: 50,
+    height: 50,
+  },
+  roundImage: {
+    overflow: 'hidden',
+    borderRadius: 25,
+  },
 });
 
-/**
- * View that renders an ERC-20 Token logo
- */
-export default class TokenElement extends Component {
-	static propTypes = {
-		/**
-		 * Asset object
-		 */
-		asset: PropTypes.object,
-		/**
-		 * Style to apply to main view
-		 */
-		containerStyle: PropTypes.object,
-		/**
-		 * Style to apply to image
-		 */
-		iconStyle: PropTypes.object,
-		/**
-		 * Whether logo is defined in asset, logo could be undefined
-		 */
-		logoDefined: PropTypes.bool
-	};
+const TokenImage = ({ asset, containerStyle, iconStyle, tokenList }) => {
+  const assetImage = isUrl(asset?.image) ? asset.image : null;
+  const iconUrl =
+    assetImage ||
+    tokenList[asset?.address]?.iconUrl ||
+    tokenList[asset?.address?.toLowerCase()]?.iconUrl ||
+    '';
 
-	shouldComponentUpdate(nextProps) {
-		return nextProps.asset.address !== this.props.asset.address;
-	}
+  return (
+    <View style={[styles.itemLogoWrapper, containerStyle, styles.roundImage]}>
+      {iconUrl ? (
+        <AssetIcon
+          address={asset?.address}
+          logo={iconUrl}
+          customStyle={iconStyle}
+        />
+      ) : (
+        <Identicon address={asset?.address} customStyle={iconStyle} />
+      )}
+    </View>
+  );
+};
 
-	render = () => {
-		const { asset, containerStyle, iconStyle, logoDefined } = this.props;
-		if (!logoDefined && !asset.logo) {
-			const checksumAddress = toChecksumAddress(asset.address);
-			if (checksumAddress in contractMap) {
-				asset.logo = contractMap[checksumAddress].logo;
-			}
-		}
-		// When image is defined, is coming from a token added by watchAsset, so it has to be handled alone
-		const watchedAsset = asset.image !== undefined;
-		return (
-			<View style={[styles.itemLogoWrapper, containerStyle, asset.logo || asset.image ? {} : styles.roundImage]}>
-				{asset.logo || asset.image ? (
-					<AssetIcon watchedAsset={watchedAsset} logo={asset.image || asset.logo} customStyle={iconStyle} />
-				) : (
-					<Identicon address={asset.address} customStyle={iconStyle} />
-				)}
-			</View>
-		);
-	};
-}
+TokenImage.propTypes = {
+  asset: PropTypes.object,
+  containerStyle: PropTypes.object,
+  iconStyle: PropTypes.object,
+  tokenList: PropTypes.object,
+};
+
+const mapStateToProps = (state) => ({
+  tokenList: getTokenList(state),
+});
+
+export default connect(mapStateToProps)(TokenImage);

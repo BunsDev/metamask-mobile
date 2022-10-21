@@ -1,59 +1,234 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import IonicIcon from 'react-native-vector-icons/Ionicons';
-import Device from '../../../util/Device';
+import Keypad from './components';
+import { KEYS } from './constants';
+import useCurrency from './useCurrency';
+import { ViewPropTypes } from 'react-native';
+function KeypadComponent({
+  onChange,
+  value,
+  currency,
+  decimals,
+  style,
+  digitButtonStyle,
+  digitTextStyle,
+  periodButtonStyle,
+  periodTextStyle,
+  deleteButtonStyle,
+  deleteIcon,
+}) {
+  const { handler, decimalSeparator } = useCurrency(currency, decimals);
+  const handleKeypadPress = useCallback(
+    (pressedKey) => {
+      const newValue = handler(value, pressedKey);
+      let valueAsNumber = 0;
+      try {
+        valueAsNumber = Number(newValue.replace(decimalSeparator, '.'));
+      } catch (error) {
+        console.error(error);
+      }
+      onChange({ value: newValue, valueAsNumber, pressedKey });
+    },
+    [decimalSeparator, handler, onChange, value],
+  );
+  const handleKeypadPress1 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_1),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress2 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_2),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress3 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_3),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress4 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_4),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress5 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_5),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress6 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_6),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress7 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_7),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress8 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_8),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress9 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_9),
+    [handleKeypadPress],
+  );
+  const handleKeypadPress0 = useCallback(
+    () => handleKeypadPress(KEYS.DIGIT_0),
+    [handleKeypadPress],
+  );
+  const handleKeypadPressPeriod = useCallback(
+    () => decimalSeparator && handleKeypadPress(KEYS.PERIOD),
+    [decimalSeparator, handleKeypadPress],
+  );
+  const handleKeypadPressBack = useCallback(
+    () => handleKeypadPress(KEYS.BACK),
+    [handleKeypadPress],
+  );
+  const handleKeypadLongPressBack = useCallback(
+    () => handleKeypadPress(KEYS.INITIAL),
+    [handleKeypadPress],
+  );
 
-import Text from '../Text';
-import { colors } from '../../../styles/common';
+  return (
+    <Keypad style={style}>
+      <Keypad.Row>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress1}
+        >
+          1
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress2}
+        >
+          2
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress3}
+        >
+          3
+        </Keypad.Button>
+      </Keypad.Row>
+      <Keypad.Row>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress4}
+        >
+          4
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress5}
+        >
+          5
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress6}
+        >
+          6
+        </Keypad.Button>
+      </Keypad.Row>
+      <Keypad.Row>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress7}
+        >
+          7
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress8}
+        >
+          8
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress9}
+        >
+          9
+        </Keypad.Button>
+      </Keypad.Row>
+      <Keypad.Row>
+        <Keypad.Button
+          style={periodButtonStyle}
+          textStyle={periodTextStyle}
+          onPress={handleKeypadPressPeriod}
+        >
+          {decimalSeparator}
+        </Keypad.Button>
+        <Keypad.Button
+          style={digitButtonStyle}
+          textStyle={digitTextStyle}
+          onPress={handleKeypadPress0}
+        >
+          0
+        </Keypad.Button>
+        <Keypad.DeleteButton
+          style={deleteButtonStyle}
+          icon={deleteIcon}
+          onPress={handleKeypadPressBack}
+          onLongPress={handleKeypadLongPressBack}
+          delayLongPress={500}
+        />
+      </Keypad.Row>
+    </Keypad>
+  );
+}
 
-const styles = StyleSheet.create({
-	keypad: {
-		paddingHorizontal: 25
-	},
-	keypadRow: {
-		flexDirection: 'row',
-		justifyContent: 'space-around'
-	},
-	keypadButton: {
-		paddingHorizontal: 20,
-		paddingVertical: Device.isMediumDevice() ? (Device.isIphone5() ? 5 : 10) : 15,
-		flex: 1,
-		justifyContent: 'center',
-		alignItems: 'center'
-	},
-	keypadButtonText: {
-		color: colors.black,
-		textAlign: 'center',
-		fontSize: 30
-	},
-	deleteIcon: {
-		fontSize: 25,
-		marginTop: 5
-	}
-});
-
-const KeypadContainer = props => <View style={styles.keypad} {...props} />;
-const KeypadRow = props => <View style={styles.keypadRow} {...props} />;
-const KeypadButton = ({ children, ...props }) => (
-	<TouchableOpacity style={styles.keypadButton} {...props}>
-		<Text style={styles.keypadButtonText}>{children}</Text>
-	</TouchableOpacity>
-);
-
-KeypadButton.propTypes = {
-	children: PropTypes.node
+KeypadComponent.propTypes = {
+  /**
+   * Function that will be called when a key is pressed with arguments `(value, key)`
+   */
+  onChange: PropTypes.func,
+  /**
+   * Currency code for the keypad rules and symbols. Defaults to
+   * currency without decimals (CURRENCIES[default])
+   */
+  currency: PropTypes.string,
+  /**
+   * Currency decimals
+   */
+  decimals: PropTypes.number,
+  /**
+   * Current value used to create new value when a key is pressed.
+   */
+  value: PropTypes.string,
+  /**
+   * Custom style for container
+   */
+  style: ViewPropTypes.style,
+  /**
+   * Custom style for digit buttons
+   */
+  digitButtonStyle: ViewPropTypes.style,
+  /**
+   * Custom style for digit text
+   */
+  digitTextStyle: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  /**
+   * Custom style for period button
+   */
+  periodButtonStyle: ViewPropTypes.style,
+  /**
+   * Custom style for period text
+   */
+  periodTextStyle: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
+  /**
+   * Custom style for delete button
+   */
+  deleteButtonStyle: ViewPropTypes.style,
+  /**
+   * Custom icon for delete button
+   */
+  deleteIcon: PropTypes.node,
 };
 
-const KeypadDeleteButton = props => (
-	<TouchableOpacity style={styles.keypadButton} {...props}>
-		<IonicIcon style={[styles.keypadButtonText, styles.deleteIcon]} name="md-arrow-back" />
-	</TouchableOpacity>
-);
-
-const Keypad = KeypadContainer;
-Keypad.Row = KeypadRow;
-Keypad.Button = KeypadButton;
-Keypad.DeleteButton = KeypadDeleteButton;
-
-export default Keypad;
+export { KEYS };
+export default KeypadComponent;

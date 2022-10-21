@@ -1,11 +1,14 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Keypad component should render correctly 1`] = `
+exports[`Keypad component components should render correctly 1`] = `
 <View
   style={
-    Object {
-      "paddingHorizontal": 25,
-    }
+    Array [
+      Object {
+        "paddingHorizontal": 25,
+      },
+      undefined,
+    ]
   }
 >
   <KeypadRow>

@@ -1,167 +1,337 @@
-import React, { PureComponent } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { TouchableOpacity, StyleSheet, Text, View, InteractionManager } from 'react-native';
+import {
+  TouchableOpacity,
+  StyleSheet,
+  View,
+  InteractionManager,
+  Image,
+} from 'react-native';
 import { connect } from 'react-redux';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, fontStyles } from '../../../styles/common';
+import { fontStyles } from '../../../styles/common';
 import { strings } from '../../../../locales/i18n';
-import CollectibleImage from '../CollectibleImage';
-import AssetElement from '../AssetElement';
-import Analytics from '../../../core/Analytics';
+import Engine from '../../../core/Engine';
+import CollectibleContractElement from '../CollectibleContractElement';
+import Analytics from '../../../core/Analytics/Analytics';
 import { ANALYTICS_EVENT_OPTS } from '../../../util/analytics';
+import {
+  collectibleContractsSelector,
+  collectiblesSelector,
+  favoritesCollectiblesSelector,
+} from '../../../reducers/collectibles';
+import { removeFavoriteCollectible } from '../../../actions/collectibles';
+import { setNftDetectionDismissed } from '../../../actions/user';
+import Text from '../../Base/Text';
+import AppConstants from '../../../core/AppConstants';
+import { toLowerCaseEquals } from '../../../util/general';
+import { compareTokenIds } from '../../../util/tokens';
+import CollectibleDetectionModal from '../CollectibleDetectionModal';
+import { isMainNet } from '../../../util/networks';
+import { useTheme } from '../../../util/theme';
 
-const styles = StyleSheet.create({
-	wrapper: {
-		backgroundColor: colors.white,
-		flex: 1,
-		minHeight: 500
-	},
-	emptyView: {
-		backgroundColor: colors.white,
-		justifyContent: 'center',
-		alignItems: 'center',
-		marginTop: 50
-	},
-	text: {
-		fontSize: 20,
-		color: colors.fontTertiary,
-		...fontStyles.normal
-	},
-	add: {
-		margin: 20,
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center'
-	},
-	addText: {
-		fontSize: 15,
-		color: colors.blue,
-		...fontStyles.normal
-	},
-	footer: {
-		flex: 1,
-		paddingBottom: 30
-	},
-	rows: {
-		flex: 1,
-		marginLeft: 20,
-		marginTop: 8
-	},
-	name: {
-		fontSize: 16,
-		color: colors.fontPrimary,
-		...fontStyles.normal
-	},
-	amount: {
-		fontSize: 12,
-		color: colors.grey400,
-		...fontStyles.normal
-	},
-	itemWrapper: {
-		flex: 1,
-		flexDirection: 'row'
-	}
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    wrapper: {
+      backgroundColor: colors.background.default,
+      flex: 1,
+      minHeight: 500,
+      marginTop: 16,
+    },
+    emptyView: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    add: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addText: {
+      fontSize: 14,
+      color: colors.primary.default,
+      ...fontStyles.normal,
+    },
+    footer: {
+      flex: 1,
+      paddingBottom: 30,
+      alignItems: 'center',
+      marginTop: 24,
+    },
+    emptyContainer: {
+      flex: 1,
+      marginBottom: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    emptyImageContainer: {
+      width: 76,
+      height: 76,
+      marginTop: 30,
+      marginBottom: 12,
+      tintColor: colors.icon.muted,
+    },
+    emptyTitleText: {
+      fontSize: 24,
+      color: colors.text.alternative,
+    },
+    emptyText: {
+      color: colors.text.alternative,
+      marginBottom: 8,
+      fontSize: 14,
+    },
+  });
 
 /**
  * View that renders a list of CollectibleContract
- * also known as ERC-721 Tokens
+ * ERC-721 and ERC-1155
  */
-class CollectibleContracts extends PureComponent {
-	static propTypes = {
-		/**
-		 * Array of collectibleContract objects
-		 */
-		collectibleContracts: PropTypes.array,
-		/**
-		 * Array of collectibles objects
-		 */
-		collectibles: PropTypes.array,
-		/**
-		 * Navigation object required to push
-		 * the Asset detail view
-		 */
-		navigation: PropTypes.object
-	};
+const CollectibleContracts = ({
+  selectedAddress,
+  chainId,
+  navigation,
+  collectibleContracts,
+  collectibles,
+  favoriteCollectibles,
+  removeFavoriteCollectible,
+  useCollectibleDetection,
+  setNftDetectionDismissed,
+  nftDetectionDismissed,
+}) => {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  const [isAddNFTEnabled, setIsAddNFTEnabled] = useState(true);
 
-	renderEmpty = () => (
-		<View style={styles.emptyView}>
-			<Text style={styles.text}>{strings('wallet.no_collectibles')}</Text>
-			{this.renderFooter()}
-		</View>
-	);
+  const onItemPress = useCallback(
+    (collectible, contractName) => {
+      navigation.navigate('CollectiblesDetails', { collectible, contractName });
+    },
+    [navigation],
+  );
 
-	onItemPress = collectibleContract => {
-		this.props.navigation.push('Collectible', collectibleContract);
-	};
+  /**
+   *  Method to check the token id data type of the current collectibles.
+   *
+   * @param collectible - Collectible object.
+   * @returns Boolean indicating if the collectible should be updated.
+   */
+  const shouldUpdateCollectibleMetadata = (collectible) =>
+    typeof collectible.tokenId === 'number';
 
-	goToAddCollectible = () => {
-		this.props.navigation.push('AddAsset', { assetType: 'collectible' });
-		InteractionManager.runAfterInteractions(() => {
-			Analytics.trackEvent(ANALYTICS_EVENT_OPTS.WALLET_ADD_COLLECTIBLES);
-		});
-	};
+  /**
+   * Method to updated collectible and avoid backwards compatibility issues.
+   * @param address - Collectible address.
+   * @param tokenId - Collectible token ID.
+   */
+  const updateCollectibleMetadata = (collectible) => {
+    const { CollectiblesController } = Engine.context;
+    const { address, tokenId } = collectible;
+    CollectiblesController.removeCollectible(address, tokenId);
+    if (String(tokenId).includes('e+')) {
+      removeFavoriteCollectible(selectedAddress, chainId, collectible);
+    } else {
+      CollectiblesController.addCollectible(address, String(tokenId));
+    }
+  };
 
-	renderFooter = () => (
-		<View style={styles.footer} key={'collectible-contracts-footer'}>
-			<TouchableOpacity style={styles.add} onPress={this.goToAddCollectible} testID={'add-collectible-button'}>
-				<Icon name="plus" size={16} color={colors.blue} />
-				<Text style={styles.addText}>{strings('wallet.add_collectibles')}</Text>
-			</TouchableOpacity>
-		</View>
-	);
+  useEffect(() => {
+    // TO DO: Move this fix to the controllers layer
+    collectibles.forEach((collectible) => {
+      if (shouldUpdateCollectibleMetadata(collectible)) {
+        updateCollectibleMetadata(collectible);
+      }
+    });
+  });
 
-	renderItem = item => {
-		const { address, name, logo, symbol } = item;
-		const collectibleAmount =
-			(this.props.collectibles &&
-				this.props.collectibles.filter(
-					collectible => collectible.address.toLowerCase() === address.toLowerCase()
-				).length) ||
-			0;
-		return (
-			<AssetElement onPress={this.onItemPress} asset={item} key={address}>
-				<View style={styles.itemWrapper}>
-					<CollectibleImage collectible={{ address, name, image: logo }} />
-					<View style={styles.rows}>
-						<Text style={styles.name}>{name}</Text>
-						<Text style={styles.amount}>
-							{collectibleAmount} {symbol}
-						</Text>
-					</View>
-				</View>
-			</AssetElement>
-		);
-	};
+  const goToAddCollectible = () => {
+    setIsAddNFTEnabled(false);
+    navigation.push('AddAsset', { assetType: 'collectible' });
+    InteractionManager.runAfterInteractions(() => {
+      Analytics.trackEvent(ANALYTICS_EVENT_OPTS.WALLET_ADD_COLLECTIBLES);
+      setIsAddNFTEnabled(true);
+    });
+  };
 
-	handleOnItemPress = collectibleContract => {
-		this.onItemPress(collectibleContract);
-	};
+  const renderFooter = () => (
+    <View style={styles.footer} key={'collectible-contracts-footer'}>
+      <Text style={styles.emptyText}>{strings('wallet.no_collectibles')}</Text>
+      <TouchableOpacity
+        style={styles.add}
+        onPress={goToAddCollectible}
+        disabled={!isAddNFTEnabled}
+        testID={'add-collectible-button'}
+      >
+        <Text style={styles.addText}>{strings('wallet.add_collectibles')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-	renderList() {
-		const { collectibleContracts } = this.props;
+  const renderCollectibleContract = useCallback(
+    (item, index) => {
+      const contractCollectibles = collectibles?.filter((collectible) =>
+        toLowerCaseEquals(collectible.address, item.address),
+      );
+      return (
+        <CollectibleContractElement
+          onPress={onItemPress}
+          asset={item}
+          key={item.address}
+          contractCollectibles={contractCollectibles}
+          collectiblesVisible={index === 0}
+        />
+      );
+    },
+    [collectibles, onItemPress],
+  );
 
-		return (
-			<View>
-				{collectibleContracts.map(item => this.renderItem(item))}
-				{this.renderFooter()}
-			</View>
-		);
-	}
+  const renderFavoriteCollectibles = useCallback(() => {
+    const filteredCollectibles = favoriteCollectibles.map((collectible) =>
+      collectibles.find(
+        ({ tokenId, address }) =>
+          compareTokenIds(collectible.tokenId, tokenId) &&
+          collectible.address === address,
+      ),
+    );
+    return (
+      Boolean(filteredCollectibles.length) && (
+        <CollectibleContractElement
+          onPress={onItemPress}
+          asset={{ name: 'Favorites', favorites: true }}
+          key={'Favorites'}
+          contractCollectibles={filteredCollectibles}
+          collectiblesVisible
+        />
+      )
+    );
+  }, [favoriteCollectibles, collectibles, onItemPress]);
 
-	render = () => {
-		const { collectibleContracts } = this.props;
-		return (
-			<View style={styles.wrapper} testID={'collectible-contracts'}>
-				{collectibleContracts && collectibleContracts.length ? this.renderList() : this.renderEmpty()}
-			</View>
-		);
-	};
-}
+  const renderList = useCallback(
+    () => (
+      <View>
+        {renderFavoriteCollectibles()}
+        <View>
+          {collectibleContracts?.map((item, index) =>
+            renderCollectibleContract(item, index),
+          )}
+        </View>
+      </View>
+    ),
+    [
+      collectibleContracts,
+      renderFavoriteCollectibles,
+      renderCollectibleContract,
+    ],
+  );
 
-const mapStateToProps = state => ({
-	collectibleContracts: state.engine.backgroundState.AssetsController.collectibleContracts,
-	collectibles: state.engine.backgroundState.AssetsController.collectibles
+  const goToLearnMore = () =>
+    navigation.navigate('Webview', {
+      screen: 'SimpleWebview',
+      params: { url: AppConstants.URLS.NFT },
+    });
+
+  const dismissNftInfo = async () => {
+    setNftDetectionDismissed(true);
+  };
+
+  const renderEmpty = () => (
+    <View style={styles.emptyView}>
+      <View style={styles.emptyContainer}>
+        <Image
+          style={styles.emptyImageContainer}
+          source={require('../../../images/no-nfts-placeholder.png')}
+          resizeMode={'contain'}
+        />
+        <Text center style={styles.emptyTitleText} bold>
+          {strings('wallet.no_nfts_yet')}
+        </Text>
+        <Text center big link onPress={goToLearnMore}>
+          {strings('wallet.learn_more')}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.wrapper} testID={'collectible-contracts'}>
+      {isMainNet(chainId) &&
+        !nftDetectionDismissed &&
+        !useCollectibleDetection && (
+          <View style={styles.emptyView}>
+            <CollectibleDetectionModal
+              onDismiss={dismissNftInfo}
+              navigation={navigation}
+            />
+          </View>
+        )}
+      {collectibleContracts.length > 0 ? renderList() : renderEmpty()}
+      {renderFooter()}
+    </View>
+  );
+};
+
+CollectibleContracts.propTypes = {
+  /**
+   * Chain id
+   */
+  chainId: PropTypes.string,
+  /**
+   * Selected address
+   */
+  selectedAddress: PropTypes.string,
+  /**
+   * Array of collectibleContract objects
+   */
+  collectibleContracts: PropTypes.array,
+  /**
+   * Array of collectibles objects
+   */
+  collectibles: PropTypes.array,
+  /**
+   * Navigation object required to push
+   * the Asset detail view
+   */
+  navigation: PropTypes.object,
+  /**
+   * Object of collectibles
+   */
+  favoriteCollectibles: PropTypes.array,
+  /**
+   * Dispatch remove collectible from favorites action
+   */
+  removeFavoriteCollectible: PropTypes.func,
+  /**
+   * Boolean to show if NFT detection is enabled
+   */
+  useCollectibleDetection: PropTypes.bool,
+  /**
+   * Setter for NFT detection state
+   */
+  setNftDetectionDismissed: PropTypes.func,
+  /**
+   * State to manage display of modal
+   */
+  nftDetectionDismissed: PropTypes.bool,
+};
+
+const mapStateToProps = (state) => ({
+  chainId: state.engine.backgroundState.NetworkController.provider.chainId,
+  selectedAddress:
+    state.engine.backgroundState.PreferencesController.selectedAddress,
+  useCollectibleDetection:
+    state.engine.backgroundState.PreferencesController.useCollectibleDetection,
+  nftDetectionDismissed: state.user.nftDetectionDismissed,
+  collectibleContracts: collectibleContractsSelector(state),
+  collectibles: collectiblesSelector(state),
+  favoriteCollectibles: favoritesCollectiblesSelector(state),
 });
 
-export default connect(mapStateToProps)(CollectibleContracts);
+const mapDispatchToProps = (dispatch) => ({
+  removeFavoriteCollectible: (selectedAddress, chainId, collectible) =>
+    dispatch(removeFavoriteCollectible(selectedAddress, chainId, collectible)),
+  setNftDetectionDismissed: () => dispatch(setNftDetectionDismissed()),
+});
+
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps,
+)(CollectibleContracts);

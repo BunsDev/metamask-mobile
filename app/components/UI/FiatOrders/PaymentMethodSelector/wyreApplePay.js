@@ -1,98 +1,74 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
-import { StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { NavigationContext } from 'react-navigation';
+import { StyleSheet, Image } from 'react-native';
+
 import { strings } from '../../../../../locales/i18n';
-import { useWyreTerms } from '../orderProcessor/wyreApplePay';
 
 import PaymentMethod from '../components/PaymentMethod';
 
-import ModalHandler from '../../../Base/ModalHandler';
 import Text from '../../../Base/Text';
 import Title from '../components/Title';
+import { useAssetFromTheme } from '../../../../util/theme';
 
-const logosStyle = StyleSheet.create({
-	applePay: {
-		marginVertical: 3
-	}
+const styles = StyleSheet.create({
+  title: {
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  applePay: {
+    marginVertical: 3,
+    marginLeft: 5,
+    marginBottom: '-3%',
+  },
 });
 
 /* eslint-disable import/no-commonjs */
-const ApplePayMarkIcon = require('../../../../images/ApplePayMark.png');
-const WyreLogoIcon = require('../../../../images/WyreLogo.png');
+const ApplePayMarkLightIcon = require('../../../../images/ApplePayMark-light.png');
+const ApplePayMarkDarkIcon = require('../../../../images/ApplePayMark-dark.png');
+const WyreLogoLightIcon = require('../../../../images/WyreLogo-light.png');
+const WyreLogoDarkIcon = require('../../../../images/WyreLogo-dark.png');
 /* eslint-enable import/no-commonjs */
 
-const ApplePayMark = () => <Image source={ApplePayMarkIcon} style={logosStyle.applePay} />;
-const WyreLogo = () => <Image source={WyreLogoIcon} style={logosStyle.wyre} />;
-
-const WyreApplePayPaymentMethod = ({ onPress }) => {
-	const navigation = useContext(NavigationContext);
-	const handleWyreTerms = useWyreTerms(navigation);
-
-	return (
-		<PaymentMethod onPress={onPress}>
-			<PaymentMethod.Badge>{strings('fiat_on_ramp.best_deal')}</PaymentMethod.Badge>
-			<PaymentMethod.Content>
-				<PaymentMethod.Details>
-					<Text reset>
-						<Title>{strings('fiat_on_ramp.apple_pay')}</Title> <Text>{strings('fiat_on_ramp.via')}</Text>{' '}
-						<WyreLogo />
-					</Text>
-					<Text>{strings('fiat_on_ramp.wyre_minutes')}</Text>
-					<Text>{strings('fiat_on_ramp.wyre_max')}</Text>
-					<Text>{strings('fiat_on_ramp.wyre_requires_debit_card')}</Text>
-				</PaymentMethod.Details>
-				<PaymentMethod.Terms>
-					<ApplePayMark />
-					<ModalHandler>
-						{({ isVisible, toggleModal }) => (
-							<>
-								<TouchableOpacity onPress={toggleModal}>
-									<PaymentMethod.InfoIconLine>
-										<Text bold small>
-											{strings('fiat_on_ramp.wyre_us_only')}
-										</Text>
-										<PaymentMethod.InfoIcon />
-									</PaymentMethod.InfoIconLine>
-
-									<Text right disclaimer>
-										{strings('fiat_on_ramp.some_states_excluded')}
-									</Text>
-								</TouchableOpacity>
-
-								<PaymentMethod.Modal
-									isVisible={isVisible}
-									dismiss={toggleModal}
-									title={strings('fiat_on_ramp.modal_wyre_support')}
-								>
-									<Text modal>
-										{strings('fiat_on_ramp.wyre_modal_text')}{' '}
-										<Text
-											modal
-											link
-											// eslint-disable-next-line react/jsx-no-bind
-											onPress={() => {
-												toggleModal();
-												handleWyreTerms();
-											}}
-										>
-											{strings('fiat_on_ramp.wyre_modal_terms_of_service_apply')}
-										</Text>
-									</Text>
-								</PaymentMethod.Modal>
-							</>
-						)}
-					</ModalHandler>
-				</PaymentMethod.Terms>
-			</PaymentMethod.Content>
-		</PaymentMethod>
-	);
+const ApplePayMark = () => {
+  const applePayMarkIcon = useAssetFromTheme(
+    ApplePayMarkLightIcon,
+    ApplePayMarkDarkIcon,
+  );
+  return <Image source={applePayMarkIcon} style={styles.applePay} />;
 };
+const WyreLogo = () => {
+  const wyreLogoIcon = useAssetFromTheme(WyreLogoLightIcon, WyreLogoDarkIcon);
+  return <Image source={wyreLogoIcon} style={styles.wyre} />;
+};
+
+const WyreApplePayPaymentMethod = ({ onPress }) => (
+  <PaymentMethod onPress={onPress}>
+    <PaymentMethod.Content>
+      <PaymentMethod.Details>
+        <PaymentMethod.Title>
+          <Text reset style={styles.title}>
+            <Title>{strings('fiat_on_ramp.apple_pay')}</Title>{' '}
+            <Text>{strings('fiat_on_ramp.via')}</Text> <WyreLogo />
+          </Text>
+          <ApplePayMark />
+        </PaymentMethod.Title>
+        <Text bold>{strings('fiat_on_ramp.fast_no_registration')}</Text>
+        <Text>{strings('fiat_on_ramp.debit_credit_card_required')}</Text>
+
+        <PaymentMethod.InfoIconLine>
+          <Text>
+            <Text small>{strings('fiat_on_ramp.wyre_countries')}</Text>
+          </Text>
+        </PaymentMethod.InfoIconLine>
+      </PaymentMethod.Details>
+    </PaymentMethod.Content>
+  </PaymentMethod>
+);
 
 WyreApplePayPaymentMethod.propTypes = {
-	onPress: PropTypes.func
+  onPress: PropTypes.func,
 };
 WyreApplePayPaymentMethod.defaultProps = {
-	onPress: undefined
+  onPress: undefined,
 };
 export default WyreApplePayPaymentMethod;

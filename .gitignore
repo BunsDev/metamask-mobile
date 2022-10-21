@@ -29,9 +29,15 @@ app/bin
 .gradle
 local.properties
 *.iml
+*.hprof
 android/.project
 android/app/.project
 android/app/bin/
+android/app/gradle*
+android/app/_build*
+
+# if we ever want to add google services
+android/app/google-services.json
 
 # node.js
 node_modules/
@@ -53,7 +59,7 @@ buck-out/
 *.jsbundle
 
 # testing
-coverage
+tests
 
 # app-specific
 /android/app/src/main/assets/InpageBridgeWeb3.js
@@ -73,3 +79,9 @@ coverage
 
 # CocoaPods
 /ios/Pods/
+
+# Language files to add
+/locales/languagesToUpdate/*.json
+
+# attributions
+licenseInfos.json

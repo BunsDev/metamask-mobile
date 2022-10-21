@@ -1,253 +1,227 @@
-import React, { PureComponent } from 'react';
-import { ActivityIndicator, InteractionManager, StyleSheet, View } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { StyleSheet, View, InteractionManager } from 'react-native';
 import PropTypes from 'prop-types';
-import { connect } from 'react-redux';
-import { withNavigation } from 'react-navigation';
-import Engine from '../../../core/Engine';
+import { connect, useSelector } from 'react-redux';
+import { withNavigation } from '@react-navigation/compat';
 import { showAlert } from '../../../actions/alert';
-import { colors } from '../../../styles/common';
 import Transactions from '../../UI/Transactions';
-import Networks, { isKnownNetwork } from '../../../util/networks';
+import {
+  TX_UNAPPROVED,
+  TX_SUBMITTED,
+  TX_SIGNED,
+  TX_PENDING,
+  TX_CONFIRMED,
+} from '../../../constants/transaction';
+import {
+  sortTransactions,
+  filterByAddressAndNetwork,
+} from '../../../util/activity';
 import { safeToChecksumAddress } from '../../../util/address';
+import { addAccountTimeFlagFilter } from '../../../util/transactions';
+import { toLowerCaseEquals } from '../../../util/general';
 
 const styles = StyleSheet.create({
-	wrapper: {
-		flex: 1
-	},
-	loader: {
-		backgroundColor: colors.white,
-		flex: 1,
-		alignItems: 'center',
-		justifyContent: 'center'
-	}
+  wrapper: {
+    flex: 1,
+  },
 });
 
-/**
- * Main view for the Transaction history
- */
-class TransactionsView extends PureComponent {
-	static propTypes = {
-		/**
-		 * ETH to current currency conversion rate
-		 */
-		conversionRate: PropTypes.number,
-		/**
-		 * Currency code of the currently-active currency
-		 */
-		currentCurrency: PropTypes.string,
-		/**
-		/* navigation object required to push new views
-		*/
-		navigation: PropTypes.object,
-		/**
-		 * A string that represents the selected address
-		 */
-		selectedAddress: PropTypes.string,
-		/**
-		 * An array that represents the user transactions
-		 */
-		transactions: PropTypes.array,
-		/**
-		 * A string represeting the network name
-		 */
-		networkType: PropTypes.string,
-		/**
-		 * Array of ERC20 assets
-		 */
-		tokens: PropTypes.array
-	};
+const TransactionsView = ({
+  navigation,
+  conversionRate,
+  selectedAddress,
+  identities,
+  networkType,
+  currentCurrency,
+  transactions,
+  chainId,
+  tokens,
+}) => {
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [submittedTxs, setSubmittedTxs] = useState([]);
+  const [confirmedTxs, setConfirmedTxs] = useState([]);
+  const [loading, setLoading] = useState();
+  const network = useSelector(
+    (state) => state.engine.backgroundState.NetworkController.network,
+  );
 
-	state = {
-		transactionsUpdated: false,
-		submittedTxs: [],
-		confirmedTxs: [],
-		loading: false
-	};
+  const filterTransactions = useCallback(
+    (network) => {
+      if (network === 'loading') return;
 
-	txs = [];
-	txsPending = [];
-	mounted = false;
-	isNormalizing = false;
-	scrollableTabViewRef = React.createRef();
-	flatlistRef = null;
+      let accountAddedTimeInsertPointFound = false;
+      const addedAccountTime = identities[selectedAddress]?.importTime;
 
-	async init() {
-		this.mounted = true;
-		this.normalizeTransactions();
-	}
+      const submittedTxs = [];
+      const newPendingTxs = [];
+      const confirmedTxs = [];
+      const submittedNonces = [];
 
-	componentDidMount() {
-		InteractionManager.runAfterInteractions(() => {
-			this.init();
-		});
-	}
+      const allTransactionsSorted = sortTransactions(transactions).filter(
+        (tx, index, self) =>
+          self.findIndex((_tx) => _tx.id === tx.id) === index,
+      );
 
-	componentDidUpdate(prevProps) {
-		if (
-			prevProps.networkType !== this.props.networkType ||
-			prevProps.selectedAddress !== this.props.selectedAddress
-		) {
-			this.showLoaderAndNormalize();
-		} else {
-			this.normalizeTransactions();
-		}
-	}
+      const allTransactions = allTransactionsSorted.filter((tx) => {
+        const filter = filterByAddressAndNetwork(
+          tx,
+          tokens,
+          selectedAddress,
+          chainId,
+          network,
+        );
 
-	showLoaderAndNormalize() {
-		this.setState({ loading: true }, () => {
-			this.normalizeTransactions();
-		});
-	}
+        if (!filter) return false;
 
-	componentWillUnmount() {
-		this.mounted = false;
-	}
+        tx.insertImportTime = addAccountTimeFlagFilter(
+          tx,
+          addedAccountTime,
+          accountAddedTimeInsertPointFound,
+        );
+        if (tx.insertImportTime) accountAddedTimeInsertPointFound = true;
 
-	didTxStatusesChange = newTxsPending => this.txsPending.length !== newTxsPending.length;
+        switch (tx.status) {
+          case TX_SUBMITTED:
+          case TX_SIGNED:
+          case TX_UNAPPROVED:
+            submittedTxs.push(tx);
+            return false;
+          case TX_PENDING:
+            newPendingTxs.push(tx);
+            break;
+          case TX_CONFIRMED:
+            confirmedTxs.push(tx);
+            break;
+        }
 
-	ethFilter = tx => {
-		const { selectedAddress, networkType } = this.props;
-		const networkId = Networks[networkType].networkId;
-		const {
-			transaction: { from, to },
-			isTransfer,
-			transferInformation
-		} = tx;
-		if (isTransfer)
-			return this.props.tokens.find(
-				({ address }) => address.toLowerCase() === transferInformation.contractAddress.toLowerCase()
-			);
-		return (
-			(safeToChecksumAddress(from) === selectedAddress || safeToChecksumAddress(to) === selectedAddress) &&
-			((networkId && networkId.toString() === tx.networkID) ||
-				(networkType === 'rpc' && !isKnownNetwork(tx.networkID))) &&
-			tx.status !== 'unapproved'
-		);
-	};
+        return filter;
+      });
 
-	normalizeTransactions() {
-		if (this.isNormalizing) return;
-		this.isNormalizing = true;
-		let submittedTxs = [];
-		const newPendingTxs = [];
-		const confirmedTxs = [];
-		const { networkType, transactions } = this.props;
+      const submittedTxsFiltered = submittedTxs.filter(({ transaction }) => {
+        const { from, nonce } = transaction;
+        if (!toLowerCaseEquals(from, selectedAddress)) {
+          return false;
+        }
+        const alreadySubmitted = submittedNonces.includes(nonce);
+        const alreadyConfirmed = confirmedTxs.find(
+          (tx) =>
+            toLowerCaseEquals(
+              safeToChecksumAddress(tx.transaction.from),
+              selectedAddress,
+            ) && tx.transaction.nonce === nonce,
+        );
+        if (alreadyConfirmed) {
+          return false;
+        }
+        submittedNonces.push(nonce);
+        return !alreadySubmitted;
+      });
 
-		if (transactions.length) {
-			const txs = transactions.filter(tx => {
-				switch (tx.status) {
-					case 'submitted':
-					case 'signed':
-					case 'unapproved':
-						submittedTxs.push(tx);
-						break;
-					case 'pending':
-						newPendingTxs.push(tx);
-						break;
-					case 'confirmed':
-						confirmedTxs.push(tx);
-						break;
-				}
-				return this.ethFilter(tx);
-			});
+      //if the account added insertpoint is not found add it to the last transaction
+      if (
+        !accountAddedTimeInsertPointFound &&
+        allTransactions &&
+        allTransactions.length
+      ) {
+        allTransactions[allTransactions.length - 1].insertImportTime = true;
+      }
 
-			txs.sort((a, b) => (a.time > b.time ? -1 : b.time > a.time ? 1 : 0));
-			submittedTxs.sort((a, b) => (a.time > b.time ? -1 : b.time > a.time ? 1 : 0));
-			confirmedTxs.sort((a, b) => (a.time > b.time ? -1 : b.time > a.time ? 1 : 0));
+      setAllTransactions(allTransactions);
+      setSubmittedTxs(submittedTxsFiltered);
+      setConfirmedTxs(confirmedTxs);
+      setLoading(false);
+    },
+    [transactions, identities, selectedAddress, tokens, chainId],
+  );
 
-			const currentAccountConfirmedTxs = confirmedTxs.filter(
-				tx => tx.transaction.from === this.props.selectedAddress.toLowerCase()
-			);
-			const submittedNonces = [];
-			submittedTxs = submittedTxs.filter(transaction => {
-				const alreadyConfirmed = currentAccountConfirmedTxs.find(
-					tx => tx.transaction.nonce === transaction.transaction.nonce
-				);
-				if (alreadyConfirmed) {
-					InteractionManager.runAfterInteractions(() => {
-						Engine.context.TransactionController.cancelTransaction(transaction.id);
-					});
-					return false;
-				}
-				const alreadySubmitted = submittedNonces.includes(transaction.transaction.nonce);
-				submittedNonces.push(transaction.transaction.nonce);
-				return !alreadySubmitted;
-			});
+  useEffect(() => {
+    setLoading(true);
+    /*
+    Since this screen is always mounted and computations happen on this screen everytime the user changes network
+    using the InteractionManager will help by giving enough time for any animations/screen transactions before it starts
+    computing the transactions which will make the app feel more responsive. Also this takes usually less than 1 seconds
+    so the effect will not be noticeable if the user is in this screen.
+    */
+    InteractionManager.runAfterInteractions(() => {
+      filterTransactions(network);
+    });
+  }, [filterTransactions, network]);
 
-			// To avoid extra re-renders we want to set the new txs only when
-			// there's a new tx in the history or the status of one of the existing txs changed
-			if (
-				(this.txs.length === 0 && !this.state.transactionsUpdated) ||
-				this.txs.length !== txs.length ||
-				this.networkType !== networkType ||
-				this.didTxStatusesChange(newPendingTxs)
-			) {
-				this.txs = txs;
-				this.txsPending = newPendingTxs;
-				this.setState({
-					transactionsUpdated: true,
-					loading: false,
-					transactions: txs,
-					submittedTxs,
-					confirmedTxs
-				});
-			}
-		} else if (!this.state.transactionsUpdated) {
-			this.setState({ transactionsUpdated: true, loading: false });
-		}
-		this.isNormalizing = false;
-		this.networkType = networkType;
-	}
+  return (
+    <View style={styles.wrapper} testID={'wallet-screen'}>
+      <Transactions
+        navigation={navigation}
+        transactions={allTransactions}
+        submittedTransactions={submittedTxs}
+        confirmedTransactions={confirmedTxs}
+        conversionRate={conversionRate}
+        currentCurrency={currentCurrency}
+        selectedAddress={selectedAddress}
+        networkType={networkType}
+        loading={loading}
+      />
+    </View>
+  );
+};
 
-	renderLoader = () => (
-		<View style={styles.loader}>
-			<ActivityIndicator style={styles.loader} size="small" />
-		</View>
-	);
+TransactionsView.propTypes = {
+  /**
+   * ETH to current currency conversion rate
+   */
+  conversionRate: PropTypes.number,
+  /**
+   * Currency code of the currently-active currency
+   */
+  currentCurrency: PropTypes.string,
+  /**
+  /* Identities object required to get account name
+  */
+  identities: PropTypes.object,
+  /**
+  /* navigation object required to push new views
+  */
+  navigation: PropTypes.object,
+  /**
+   * A string that represents the selected address
+   */
+  selectedAddress: PropTypes.string,
+  /**
+   * An array that represents the user transactions
+   */
+  transactions: PropTypes.array,
+  /**
+   * A string represeting the network name
+   */
+  networkType: PropTypes.string,
+  /**
+   * Array of ERC20 assets
+   */
+  tokens: PropTypes.array,
+  /**
+   * Current chainId
+   */
+  chainId: PropTypes.string,
+};
 
-	storeRef = ref => {
-		this.flatlistRef = ref;
-	};
-
-	render = () => {
-		const { conversionRate, currentCurrency, selectedAddress, navigation, networkType } = this.props;
-		return (
-			<View style={styles.wrapper} testID={'wallet-screen'}>
-				{this.state.loading ? (
-					this.renderLoader()
-				) : (
-					<Transactions
-						navigation={navigation}
-						transactions={this.txs}
-						submittedTransactions={this.state.submittedTxs}
-						confirmedTransactions={this.state.confirmedTxs}
-						conversionRate={conversionRate}
-						currentCurrency={currentCurrency}
-						selectedAddress={selectedAddress}
-						networkType={networkType}
-						loading={!this.state.transactionsUpdated}
-						onRefSet={this.storeRef}
-					/>
-				)}
-			</View>
-		);
-	};
-}
-
-const mapStateToProps = state => ({
-	conversionRate: state.engine.backgroundState.CurrencyRateController.conversionRate,
-	currentCurrency: state.engine.backgroundState.CurrencyRateController.currentCurrency,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
-	tokens: state.engine.backgroundState.AssetsController.tokens,
-	transactions: state.engine.backgroundState.TransactionController.transactions,
-	networkType: state.engine.backgroundState.NetworkController.provider.type
+const mapStateToProps = (state) => ({
+  conversionRate:
+    state.engine.backgroundState.CurrencyRateController.conversionRate,
+  currentCurrency:
+    state.engine.backgroundState.CurrencyRateController.currentCurrency,
+  selectedAddress:
+    state.engine.backgroundState.PreferencesController.selectedAddress,
+  tokens: state.engine.backgroundState.TokensController.tokens,
+  identities: state.engine.backgroundState.PreferencesController.identities,
+  transactions: state.engine.backgroundState.TransactionController.transactions,
+  networkType: state.engine.backgroundState.NetworkController.provider.type,
+  chainId: state.engine.backgroundState.NetworkController.provider.chainId,
 });
 
-const mapDispatchToProps = dispatch => ({
-	showAlert: config => dispatch(showAlert(config))
+const mapDispatchToProps = (dispatch) => ({
+  showAlert: (config) => dispatch(showAlert(config)),
 });
 
 export default connect(
-	mapStateToProps,
-	mapDispatchToProps
+  mapStateToProps,
+  mapDispatchToProps,
 )(withNavigation(TransactionsView));

@@ -1,127 +1,71 @@
-import React, { PureComponent } from 'react';
-import { colors, fontStyles, baseStyles } from '../../../../styles/common';
-import { getSendFlowTitle } from '../../../UI/Navbar';
-import AddressList from './../AddressList';
+import React, { Fragment, PureComponent } from 'react';
+import {
+  View,
+  TouchableOpacity,
+  TextInput,
+  InteractionManager,
+  ScrollView,
+  Alert,
+} from 'react-native';
 import PropTypes from 'prop-types';
-import { StyleSheet, View, TouchableOpacity, Text, TextInput, SafeAreaView, InteractionManager } from 'react-native';
-import { AddressFrom, AddressTo } from './../AddressInputs';
-import Modal from 'react-native-modal';
-import AccountList from '../../../UI/AccountList';
 import { connect } from 'react-redux';
-import { renderFromWei } from '../../../../util/number';
-import ActionModal from '../../../UI/ActionModal';
+import { toChecksumAddress } from 'ethereumjs-util';
+import { util } from '@metamask/controllers';
+import Modal from 'react-native-modal';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import Engine from '../../../../core/Engine';
-import { isValidAddress, toChecksumAddress } from 'ethereumjs-util';
-import { doENSLookup, doENSReverseLookup } from '../../../../util/ENSUtils';
+import Analytics from '../../../../core/Analytics/Analytics';
+import AddressList from './../AddressList';
+import { createQRScannerNavDetails } from '../../QRScanner';
+import Text from '../../../Base/Text';
+import { AddressFrom, AddressTo } from './../AddressInputs';
+import WarningMessage from '../WarningMessage';
+import { getSendFlowTitle } from '../../../UI/Navbar';
+import AccountList from '../../../UI/AccountList';
+import ActionModal from '../../../UI/ActionModal';
 import StyledButton from '../../../UI/StyledButton';
-import { setSelectedAsset, setRecipient, newAssetTransaction } from '../../../../actions/transaction';
-import { isENS } from '../../../../util/address';
+import { allowedToBuy } from '../../../UI/FiatOrders';
+import AnalyticsV2 from '../../../../util/analyticsV2';
+import { ANALYTICS_EVENT_OPTS } from '../../../../util/analytics';
+import { doENSLookup, doENSReverseLookup } from '../../../../util/ENSUtils';
+import { handleNetworkSwitch } from '../../../../util/networks';
+import { renderFromWei } from '../../../../util/number';
+import {
+  isENS,
+  isValidHexAddress,
+  validateAddressOrENS,
+} from '../../../../util/address';
 import { getTicker, getEther } from '../../../../util/transactions';
+import {
+  getConfusablesExplanations,
+  hasZeroWidthPoints,
+} from '../../../../util/confusables';
+import { ThemeContext, mockTheme } from '../../../../util/theme';
+import { showAlert } from '../../../../actions/alert';
+import addRecent from '../../../../actions/recents';
+import {
+  setSelectedAsset,
+  setRecipient,
+  newAssetTransaction,
+} from '../../../../actions/transaction';
 import ErrorMessage from '../ErrorMessage';
 import { strings } from '../../../../../locales/i18n';
-import WarningMessage from '../WarningMessage';
-import { util } from '@metamask/controllers';
-import Analytics from '../../../../core/Analytics';
-import { ANALYTICS_EVENT_OPTS } from '../../../../util/analytics';
-import { allowedToBuy } from '../../../UI/FiatOrders';
+import {
+  ADDRESS_BOOK_NEXT_BUTTON,
+  ADD_ADDRESS_MODAL_CONTAINER_ID,
+  ENTER_ALIAS_INPUT_BOX_ID,
+} from '../../../../constants/test-ids';
+import Routes from '../../../../constants/navigation/Routes';
+import {
+  CONTACT_ALREADY_SAVED,
+  SYMBOL_ERROR,
+  NetworkSwitchErrorType,
+} from '../../../../constants/error';
+import { baseStyles } from '../../../../styles/common';
+import createStyles from './styles';
 
 const { hexToBN } = util;
-const styles = StyleSheet.create({
-	wrapper: {
-		flex: 1,
-		backgroundColor: colors.white
-	},
-	imputWrapper: {
-		flex: 0,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.grey050,
-		paddingHorizontal: 8
-	},
-	bottomModal: {
-		justifyContent: 'flex-end',
-		margin: 0
-	},
-	myAccountsText: {
-		...fontStyles.normal,
-		color: colors.blue,
-		fontSize: 16,
-		alignSelf: 'center'
-	},
-	myAccountsTouchable: {
-		padding: 28
-	},
-	addToAddressBookRoot: {
-		flex: 1,
-		padding: 24
-	},
-	addToAddressBookWrapper: {
-		flexDirection: 'row',
-		alignItems: 'center'
-	},
-	addTextTitle: {
-		...fontStyles.normal,
-		fontSize: 24,
-		color: colors.black,
-		marginBottom: 24
-	},
-	addTextSubtitle: {
-		...fontStyles.normal,
-		fontSize: 16,
-		color: colors.grey600,
-		marginBottom: 24
-	},
-	addTextInput: {
-		...fontStyles.normal,
-		color: colors.black,
-		fontSize: 20
-	},
-	addInputWrapper: {
-		flexDirection: 'row',
-		borderWidth: 1,
-		borderRadius: 8,
-		borderColor: colors.grey050,
-		height: 50,
-		width: '100%'
-	},
-	input: {
-		flex: 1,
-		flexDirection: 'row',
-		alignItems: 'center',
-		marginHorizontal: 6,
-		width: '100%'
-	},
-	nextActionWrapper: {
-		flex: 1,
-		marginBottom: 16
-	},
-	buttonNextWrapper: {
-		flexDirection: 'row',
-		alignItems: 'flex-end'
-	},
-	buttonNext: {
-		flex: 1,
-		marginHorizontal: 24
-	},
-	addressErrorWrapper: {
-		margin: 16
-	},
-	footerContainer: {
-		flex: 1,
-		justifyContent: 'flex-end'
-	},
-	warningContainer: {
-		marginHorizontal: 24,
-		marginBottom: 32
-	},
-	buyEth: {
-		...fontStyles.bold,
-		color: colors.black,
-		textDecorationLine: 'underline'
-	},
-	bold: {
-		...fontStyles.bold
-	}
-});
 
 const dummy = () => true;
 
@@ -129,530 +73,775 @@ const dummy = () => true;
  * View that wraps the wraps the "Send" screen
  */
 class SendFlow extends PureComponent {
-	static navigationOptions = ({ navigation, screenProps }) =>
-		getSendFlowTitle('send.send_to', navigation, screenProps);
+  static propTypes = {
+    /**
+     * Map of accounts to information objects including balances
+     */
+    accounts: PropTypes.object,
+    /**
+     * Map representing the address book
+     */
+    addressBook: PropTypes.object,
+    /**
+     * Network provider chain id
+     */
+    chainId: PropTypes.string,
+    /**
+     * Network id
+     */
+    network: PropTypes.string,
+    /**
+     * Object that represents the navigator
+     */
+    navigation: PropTypes.object,
+    /**
+     * Start transaction with asset
+     */
+    newAssetTransaction: PropTypes.func.isRequired,
+    /**
+     * Selected address as string
+     */
+    selectedAddress: PropTypes.string,
+    /**
+     * List of accounts from the PreferencesController
+     */
+    identities: PropTypes.object,
+    /**
+     * List of keyrings
+     */
+    keyrings: PropTypes.array,
+    /**
+     * Current provider ticker
+     */
+    ticker: PropTypes.string,
+    /**
+     * Action that sets transaction to and ensRecipient in case is available
+     */
+    setRecipient: PropTypes.func,
+    /**
+     * Set selected in transaction state
+     */
+    setSelectedAsset: PropTypes.func,
+    /**
+     * Show alert
+     */
+    showAlert: PropTypes.func,
+    /**
+     * Network provider type as mainnet
+     */
+    providerType: PropTypes.string,
+    /**
+     * Object that represents the current route info like params passed to it
+     */
+    route: PropTypes.object,
+    /**
+     * Indicates whether the current transaction is a deep link transaction
+     */
+    isPaymentRequest: PropTypes.bool,
+    /**
+     * Returns the recent address in a json with the type ADD_RECENT
+     */
+    addRecent: PropTypes.func,
+    /**
+     * Frequent RPC list from PreferencesController
+     */
+    frequentRpcList: PropTypes.array,
+  };
 
-	static propTypes = {
-		/**
-		 * Map of accounts to information objects including balances
-		 */
-		accounts: PropTypes.object,
-		/**
-		 * Map representing the address book
-		 */
-		addressBook: PropTypes.object,
-		/**
-		 * Network id
-		 */
-		network: PropTypes.string,
-		/**
-		 * Object that represents the navigator
-		 */
-		navigation: PropTypes.object,
-		/**
-		 * Start transaction with asset
-		 */
-		newAssetTransaction: PropTypes.func.isRequired,
-		/**
-		 * Selected address as string
-		 */
-		selectedAddress: PropTypes.string,
-		/**
-		 * List of accounts from the PreferencesController
-		 */
-		identities: PropTypes.object,
-		/**
-		 * List of keyrings
-		 */
-		keyrings: PropTypes.array,
-		/**
-		 * Current provider ticker
-		 */
-		ticker: PropTypes.string,
-		/**
-		 * Action that sets transaction to and ensRecipient in case is available
-		 */
-		setRecipient: PropTypes.func,
-		/**
-		 * Set selected in transaction state
-		 */
-		setSelectedAsset: PropTypes.func,
-		/**
-		 * Network provider type as mainnet
-		 */
-		providerType: PropTypes.string,
-		/**
-		 * Indicates whether the current transaction is a payment channel transaction
-		 */
-		isPaymentChannelTransaction: PropTypes.bool,
-		/**
-		 * Selected asset from current transaction state
-		 */
-		selectedAsset: PropTypes.object
-	};
+  addressToInputRef = React.createRef();
 
-	addressToInputRef = React.createRef();
+  state = {
+    addressError: undefined,
+    balanceIsZero: false,
+    fromAccountModalVisible: false,
+    addToAddressBookModalVisible: false,
+    fromSelectedAddress: this.props.selectedAddress,
+    fromAccountName: this.props.identities[this.props.selectedAddress].name,
+    fromAccountBalance: undefined,
+    toAccount: undefined,
+    toSelectedAddressName: undefined,
+    toSelectedAddressReady: false,
+    toEnsName: undefined,
+    toEnsAddressResolved: undefined,
+    addToAddressToAddressBook: false,
+    alias: undefined,
+    confusableCollection: [],
+    inputWidth: { width: '99%' },
+    isFromAddressBook: false,
+  };
 
-	state = {
-		addressError: undefined,
-		balanceIsZero: false,
-		fromAccountModalVisible: false,
-		addToAddressBookModalVisible: false,
-		fromSelectedAddress: this.props.selectedAddress,
-		fromAccountName: this.props.identities[this.props.selectedAddress].name,
-		fromAccountBalance: undefined,
-		toSelectedAddress: undefined,
-		toSelectedAddressName: undefined,
-		toSelectedAddressReady: false,
-		toEnsName: undefined,
-		addToAddressToAddressBook: false,
-		alias: undefined,
-		inputWidth: { width: '99%' }
-	};
+  updateNavBar = () => {
+    const { navigation, route } = this.props;
+    const colors = this.context.colors || mockTheme.colors;
+    navigation.setOptions(
+      getSendFlowTitle('send.send_to', navigation, route, colors),
+    );
+  };
 
-	componentDidMount = async () => {
-		const {
-			addressBook,
-			selectedAddress,
-			accounts,
-			ticker,
-			network,
-			isPaymentChannelTransaction,
-			selectedAsset,
-			navigation,
-			providerType
-		} = this.props;
-		const { fromAccountName } = this.state;
-		// For analytics
-		navigation.setParams({ providerType });
-		const networkAddressBook = addressBook[network] || {};
-		const ens = await doENSReverseLookup(selectedAddress, network);
-		const fromAccountBalance = isPaymentChannelTransaction
-			? `${selectedAsset.assetBalance} ${selectedAsset.symbol}`
-			: `${renderFromWei(accounts[selectedAddress].balance)} ${getTicker(ticker)}`;
+  componentDidMount = async () => {
+    const {
+      addressBook,
+      selectedAddress,
+      accounts,
+      ticker,
+      network,
+      navigation,
+      providerType,
+      route,
+      isPaymentRequest,
+    } = this.props;
+    const { fromAccountName } = this.state;
+    this.updateNavBar();
+    // For analytics
+    navigation.setParams({ providerType, isPaymentRequest });
+    const networkAddressBook = addressBook[network] || {};
+    const ens = await doENSReverseLookup(selectedAddress, network);
+    const fromAccountBalance = `${renderFromWei(
+      accounts[selectedAddress].balance,
+    )} ${getTicker(ticker)}`;
 
-		setTimeout(() => {
-			this.setState({
-				fromAccountName: ens || fromAccountName,
-				fromAccountBalance,
-				balanceIsZero: hexToBN(accounts[selectedAddress].balance).isZero(),
-				inputWidth: { width: '100%' }
-			});
-		}, 100);
-		if (!Object.keys(networkAddressBook).length) {
-			this.addressToInputRef && this.addressToInputRef.current && this.addressToInputRef.current.focus();
-		}
-		//Fills in to address and sets the transaction if coming from QR code scan
-		const targetAddress = navigation.getParam('txMeta', null)?.target_address;
-		if (targetAddress) {
-			this.props.newAssetTransaction(getEther());
-			this.onToSelectedAddressChange(targetAddress);
-		}
-	};
+    setTimeout(() => {
+      this.setState({
+        fromAccountName: ens || fromAccountName,
+        fromAccountBalance,
+        balanceIsZero: hexToBN(accounts[selectedAddress].balance).isZero(),
+        inputWidth: { width: '100%' },
+      });
+    }, 100);
+    if (!Object.keys(networkAddressBook).length) {
+      setTimeout(() => {
+        this.addressToInputRef &&
+          this.addressToInputRef.current &&
+          this.addressToInputRef.current.focus();
+      }, 500);
+    }
+    //Fills in to address and sets the transaction if coming from QR code scan
+    const targetAddress = route.params?.txMeta?.target_address;
+    if (targetAddress) {
+      this.props.newAssetTransaction(getEther(ticker));
+      this.onToSelectedAddressChange(targetAddress);
+    }
+  };
 
-	toggleFromAccountModal = () => {
-		const { fromAccountModalVisible } = this.state;
-		this.setState({ fromAccountModalVisible: !fromAccountModalVisible });
-	};
+  componentDidUpdate = () => {
+    this.updateNavBar();
+  };
 
-	toggleAddToAddressBookModal = () => {
-		const { addToAddressBookModalVisible } = this.state;
-		this.setState({ addToAddressBookModalVisible: !addToAddressBookModalVisible });
-	};
+  toggleFromAccountModal = () => {
+    const { fromAccountModalVisible } = this.state;
+    this.setState({ fromAccountModalVisible: !fromAccountModalVisible });
+  };
 
-	onAccountChange = async accountAddress => {
-		const { identities, ticker, accounts } = this.props;
-		const { name } = identities[accountAddress];
-		const { PreferencesController } = Engine.context;
-		const fromAccountBalance = `${renderFromWei(accounts[accountAddress].balance)} ${getTicker(ticker)}`;
-		const ens = await doENSReverseLookup(accountAddress);
-		const fromAccountName = ens || name;
-		PreferencesController.setSelectedAddress(accountAddress);
-		// If new account doesn't have the asset
-		this.props.setSelectedAsset(getEther());
-		this.setState({
-			fromAccountName,
-			fromAccountBalance,
-			fromSelectedAddress: accountAddress,
-			balanceIsZero: hexToBN(accounts[accountAddress].balance).isZero()
-		});
-		this.toggleFromAccountModal();
-	};
+  toggleAddToAddressBookModal = () => {
+    const { addToAddressBookModalVisible } = this.state;
+    this.setState({
+      addToAddressBookModalVisible: !addToAddressBookModalVisible,
+    });
+  };
 
-	onToSelectedAddressChange = async toSelectedAddress => {
-		const { AssetsContractController } = Engine.context;
-		const { addressBook, network, identities } = this.props;
-		const networkAddressBook = addressBook[network] || {};
-		let addressError, toAddressName, toEnsName, errorContinue, isOnlyWarning;
-		let [addToAddressToAddressBook, toSelectedAddressReady] = [false, false];
-		if (isValidAddress(toSelectedAddress)) {
-			const checksummedToSelectedAddress = toChecksumAddress(toSelectedAddress);
-			toSelectedAddressReady = true;
-			const ens = await doENSReverseLookup(toSelectedAddress);
-			if (ens) {
-				toAddressName = ens;
-				if (!networkAddressBook[checksummedToSelectedAddress] && !identities[checksummedToSelectedAddress]) {
-					addToAddressToAddressBook = true;
-				}
-			} else if (networkAddressBook[checksummedToSelectedAddress] || identities[checksummedToSelectedAddress]) {
-				toAddressName =
-					(networkAddressBook[checksummedToSelectedAddress] &&
-						networkAddressBook[checksummedToSelectedAddress].name) ||
-					(identities[checksummedToSelectedAddress] && identities[checksummedToSelectedAddress].name);
-			} else {
-				// If not in address book nor user accounts
-				addToAddressToAddressBook = true;
-			}
+  onAccountChange = async (accountAddress) => {
+    const { identities, ticker, accounts } = this.props;
+    const { name } = identities[accountAddress];
+    const { PreferencesController } = Engine.context;
+    const fromAccountBalance = `${renderFromWei(
+      accounts[accountAddress].balance,
+    )} ${getTicker(ticker)}`;
+    const ens = await doENSReverseLookup(accountAddress);
+    const fromAccountName = ens || name;
+    PreferencesController.setSelectedAddress(accountAddress);
+    // If new account doesn't have the asset
+    this.props.setSelectedAsset(getEther(ticker));
+    this.setState({
+      fromAccountName,
+      fromAccountBalance,
+      fromSelectedAddress: accountAddress,
+      balanceIsZero: hexToBN(accounts[accountAddress].balance).isZero(),
+    });
+    this.toggleFromAccountModal();
+  };
+  /**
+   * This returns the address name from the address book or user accounts if the selectedAddress exist there
+   * @param {String} toAccount - Address input
+   * @returns {String | null} - Address or null if toAccount is not in the addressBook or identities array
+   */
+  getAddressNameFromBookOrIdentities = (toAccount) => {
+    if (!toAccount) return;
 
-			// Check if it's token contract address
-			try {
-				const symbol = await AssetsContractController.getAssetSymbol(toSelectedAddress);
-				if (symbol) {
-					addressError = (
-						<Text>
-							<Text>{strings('transaction.tokenContractAddressWarning_1')}</Text>
-							<Text style={styles.bold}>{strings('transaction.tokenContractAddressWarning_2')}</Text>
-							<Text>{strings('transaction.tokenContractAddressWarning_3')}</Text>
-						</Text>
-					);
-					errorContinue = true;
-				}
-			} catch (e) {
-				// Not a token address
-			}
+    const { addressBook, network, identities } = this.props;
+    const networkAddressBook = addressBook[network] || {};
 
-			/**
-			 * Not using this for now; Import isSmartContractAddress from utils/transaction and use this for checking smart contract: await isSmartContractAddress(toSelectedAddress);
-			 * Check if it's smart contract address
-			 */
-			/*
-			const smart = false; //
+    const checksummedAddress = toChecksumAddress(toAccount);
 
-			if (smart) {
-				addressError = strings('transaction.smartContractAddressWarning');
-				isOnlyWarning = true;
-			}
-			*/
-		} else if (isENS(toSelectedAddress)) {
-			toEnsName = toSelectedAddress;
-			const resolvedAddress = await doENSLookup(toSelectedAddress, network);
-			if (resolvedAddress) {
-				const checksummedResolvedAddress = toChecksumAddress(resolvedAddress);
-				toAddressName = toSelectedAddress;
-				toSelectedAddress = resolvedAddress;
-				toSelectedAddressReady = true;
-				if (!networkAddressBook[checksummedResolvedAddress] && !identities[checksummedResolvedAddress]) {
-					addToAddressToAddressBook = true;
-				}
-			} else {
-				addressError = strings('transaction.could_not_resolve_ens');
-			}
-		} else if (toSelectedAddress && toSelectedAddress.length >= 42) {
-			addressError = strings('transaction.invalid_address');
-		}
-		this.setState({
-			addressError,
-			toSelectedAddress,
-			addToAddressToAddressBook,
-			toSelectedAddressReady,
-			toSelectedAddressName: toAddressName,
-			toEnsName,
-			errorContinue,
-			isOnlyWarning
-		});
-	};
+    return networkAddressBook[checksummedAddress]
+      ? networkAddressBook[checksummedAddress].name
+      : identities[checksummedAddress]
+      ? identities[checksummedAddress].name
+      : null;
+  };
 
-	validateToAddress = async () => {
-		const { toSelectedAddress } = this.state;
-		const { network } = this.props;
-		let addressError;
-		if (isENS(toSelectedAddress)) {
-			const resolvedAddress = await doENSLookup(toSelectedAddress, network);
-			if (!resolvedAddress) {
-				addressError = strings('transaction.could_not_resolve_ens');
-			}
-		} else if (!isValidAddress(toSelectedAddress)) {
-			addressError = strings('transaction.invalid_address');
-		}
-		this.setState({ addressError });
-		return addressError;
-	};
+  isAddressSaved = () => {
+    const { toAccount } = this.state;
+    const { addressBook, network, identities } = this.props;
+    const networkAddressBook = addressBook[network] || {};
+    const checksummedAddress = toChecksumAddress(toAccount);
+    return !!(
+      networkAddressBook[checksummedAddress] || identities[checksummedAddress]
+    );
+  };
 
-	onToClear = () => {
-		this.onToSelectedAddressChange();
-	};
+  /**
+   * This set to the state all the information
+   *  that come from validating an ENS or address
+   * @param {*} toSelectedAddress - The address or the ens writted on the destination input
+   */
+  validateAddressOrENSFromInput = async (toAccount) => {
+    const { network, addressBook, identities, providerType } = this.props;
+    const {
+      addressError,
+      toEnsName,
+      addressReady,
+      toEnsAddress,
+      addToAddressToAddressBook,
+      toAddressName,
+      errorContinue,
+      isOnlyWarning,
+      confusableCollection,
+    } = await validateAddressOrENS({
+      toAccount,
+      network,
+      addressBook,
+      identities,
+      providerType,
+    });
 
-	onChangeAlias = alias => {
-		this.setState({ alias });
-	};
+    this.setState({
+      addressError,
+      toEnsName,
+      toSelectedAddressReady: addressReady,
+      toEnsAddressResolved: toEnsAddress,
+      addToAddressToAddressBook,
+      toSelectedAddressName: toAddressName,
+      errorContinue,
+      isOnlyWarning,
+      confusableCollection,
+    });
+  };
 
-	onSaveToAddressBook = () => {
-		const { network } = this.props;
-		const { toSelectedAddress, alias } = this.state;
-		const { AddressBookController } = Engine.context;
-		AddressBookController.set(toSelectedAddress, alias, network);
-		this.toggleAddToAddressBookModal();
-		this.setState({ toSelectedAddressName: alias, addToAddressToAddressBook: false, alias: undefined });
-	};
+  onToSelectedAddressChange = (toAccount) => {
+    const addressName = this.getAddressNameFromBookOrIdentities(toAccount);
 
-	onScan = () => {
-		this.props.navigation.navigate('QRScanner', {
-			onScanSuccess: meta => {
-				if (meta.target_address) {
-					this.onToSelectedAddressChange(meta.target_address);
-				}
-			}
-		});
-	};
+    /**
+     * If the address is from addressBook or identities
+     * then validation is not necessary since it was already validated
+     */
+    if (addressName) {
+      this.setState({
+        toAccount,
+        toSelectedAddressReady: true,
+        isFromAddressBook: true,
+        toSelectedAddressName: addressName,
+      });
+    } else {
+      this.validateAddressOrENSFromInput(toAccount);
+      /**
+       * Because validateAddressOrENSFromInput is an asynchronous function
+       * we are setting the state here synchronously, so it does not block the UI
+       * */
+      this.setState({
+        toAccount,
+        isFromAddressBook: false,
+      });
+    }
+  };
 
-	onTransactionDirectionSet = async () => {
-		const { setRecipient, navigation, providerType } = this.props;
-		const {
-			fromSelectedAddress,
-			toSelectedAddress,
-			toEnsName,
-			toSelectedAddressName,
-			fromAccountName
-		} = this.state;
-		const addressError = await this.validateToAddress();
-		if (addressError) return;
-		setRecipient(fromSelectedAddress, toSelectedAddress, toEnsName, toSelectedAddressName, fromAccountName);
-		InteractionManager.runAfterInteractions(() => {
-			Analytics.trackEventWithParameters(ANALYTICS_EVENT_OPTS.SEND_FLOW_ADDS_RECIPIENT, {
-				network: providerType
-			});
-		});
-		navigation.navigate('Amount');
-	};
+  validateToAddress = async () => {
+    const { toAccount } = this.state;
+    const { network } = this.props;
+    let addressError;
+    if (isENS(toAccount)) {
+      const resolvedAddress = await doENSLookup(toAccount, network);
+      if (!resolvedAddress) {
+        addressError = strings('transaction.could_not_resolve_ens');
+      }
+    } else if (!isValidHexAddress(toAccount, { mixedCaseUseChecksum: true })) {
+      addressError = strings('transaction.invalid_address');
+    }
+    this.setState({ addressError });
+    return addressError;
+  };
 
-	renderAddToAddressBookModal = () => {
-		const { addToAddressBookModalVisible, alias } = this.state;
-		return (
-			<ActionModal
-				modalVisible={addToAddressBookModalVisible}
-				confirmText={strings('address_book.save')}
-				cancelText={strings('address_book.cancel')}
-				onCancelPress={this.toggleAddToAddressBookModal}
-				onRequestClose={this.toggleAddToAddressBookModal}
-				onConfirmPress={this.onSaveToAddressBook}
-				cancelButtonMode={'normal'}
-				confirmButtonMode={'confirm'}
-				confirmDisabled={!alias}
-			>
-				<View style={styles.addToAddressBookRoot}>
-					<View style={styles.addToAddressBookWrapper} testID={'add-address-modal'}>
-						<View style={baseStyles.flexGrow}>
-							<Text style={styles.addTextTitle}>{strings('address_book.add_to_address_book')}</Text>
-							<Text style={styles.addTextSubtitle}>{strings('address_book.enter_an_alias')}</Text>
-							<View style={styles.addInputWrapper}>
-								<View style={styles.input}>
-									<TextInput
-										autoCapitalize="none"
-										autoCorrect={false}
-										onChangeText={this.onChangeAlias}
-										placeholder={strings('address_book.enter_an_alias_placeholder')}
-										placeholderTextColor={colors.grey100}
-										spellCheck={false}
-										style={styles.addTextInput}
-										numberOfLines={1}
-										onBlur={this.onBlur}
-										onFocus={this.onInputFocus}
-										onSubmitEditing={this.onFocus}
-										value={alias}
-										testID={'address-alias-input'}
-									/>
-								</View>
-							</View>
-						</View>
-					</View>
-				</View>
-			</ActionModal>
-		);
-	};
+  onToClear = () => {
+    this.onToSelectedAddressChange();
+  };
 
-	renderFromAccountModal = () => {
-		const { identities, keyrings, ticker } = this.props;
-		const { fromAccountModalVisible, fromSelectedAddress } = this.state;
-		return (
-			<Modal
-				isVisible={fromAccountModalVisible}
-				style={styles.bottomModal}
-				onBackdropPress={this.toggleFromAccountModal}
-				onBackButtonPress={this.toggleFromAccountModal}
-				onSwipeComplete={this.toggleFromAccountModal}
-				swipeDirection={'down'}
-				propagateSwipe
-			>
-				<AccountList
-					enableAccountsAddition={false}
-					identities={identities}
-					selectedAddress={fromSelectedAddress}
-					keyrings={keyrings}
-					onAccountChange={this.onAccountChange}
-					ticker={ticker}
-				/>
-			</Modal>
-		);
-	};
+  onChangeAlias = (alias) => {
+    this.setState({ alias });
+  };
 
-	onToInputFocus = () => {
-		const { toInputHighlighted } = this.state;
-		this.setState({ toInputHighlighted: !toInputHighlighted });
-	};
+  onSaveToAddressBook = () => {
+    const { network } = this.props;
+    const { toAccount, alias, toEnsAddressResolved } = this.state;
+    const { AddressBookController } = Engine.context;
+    const toAddress = toEnsAddressResolved || toAccount;
+    AddressBookController.set(toAddress, alias, network);
+    this.toggleAddToAddressBookModal();
 
-	goToBuy = () => {
-		this.props.navigation.navigate('PaymentMethodSelector');
-		InteractionManager.runAfterInteractions(() => {
-			Analytics.trackEvent(ANALYTICS_EVENT_OPTS.WALLET_BUY_ETH);
-		});
-	};
+    this.setState({
+      toSelectedAddressName: alias,
+      addToAddressToAddressBook: false,
+      alias: undefined,
+      isFromAddressBook: true,
+      toAccount: toAddress,
+    });
+  };
 
-	renderBuyEth = () => {
-		if (!allowedToBuy(this.props.network)) {
-			return null;
-		}
+  handleNetworkSwitch = (chainId) => {
+    try {
+      const { NetworkController, CurrencyRateController } = Engine.context;
+      const { showAlert, frequentRpcList } = this.props;
+      const network = handleNetworkSwitch(chainId, frequentRpcList, {
+        networkController: NetworkController,
+        currencyRateController: CurrencyRateController,
+      });
 
-		return (
-			<>
-				{'\n'}
-				<Text style={styles.buyEth} onPress={this.goToBuy}>
-					{strings('fiat_on_ramp.buy_eth')}
-				</Text>
-			</>
-		);
-	};
+      if (!network) return;
 
-	render = () => {
-		const { isPaymentChannelTransaction } = this.props;
-		const {
-			fromSelectedAddress,
-			fromAccountName,
-			fromAccountBalance,
-			toSelectedAddress,
-			toSelectedAddressReady,
-			toSelectedAddressName,
-			addToAddressToAddressBook,
-			addressError,
-			balanceIsZero,
-			toInputHighlighted,
-			inputWidth,
-			errorContinue,
-			isOnlyWarning
-		} = this.state;
-		return (
-			<SafeAreaView style={styles.wrapper} testID={'send-screen'}>
-				<View style={styles.imputWrapper}>
-					<AddressFrom
-						onPressIcon={isPaymentChannelTransaction ? null : this.toggleFromAccountModal}
-						fromAccountAddress={fromSelectedAddress}
-						fromAccountName={fromAccountName}
-						fromAccountBalance={fromAccountBalance}
-					/>
-					<AddressTo
-						inputRef={this.addressToInputRef}
-						highlighted={toInputHighlighted}
-						addressToReady={toSelectedAddressReady}
-						toSelectedAddress={toSelectedAddress}
-						toAddressName={toSelectedAddressName}
-						onToSelectedAddressChange={this.onToSelectedAddressChange}
-						onScan={this.onScan}
-						onClear={this.onToClear}
-						onInputFocus={this.onToInputFocus}
-						onInputBlur={this.onToInputFocus}
-						onSubmit={this.onTransactionDirectionSet}
-						inputWidth={inputWidth}
-					/>
-				</View>
-				{addressError && (
-					<View style={styles.addressErrorWrapper} testID={'address-error'}>
-						<ErrorMessage
-							errorMessage={addressError}
-							errorContinue={!!errorContinue}
-							onContinue={this.onTransactionDirectionSet}
-							isOnlyWarning={!!isOnlyWarning}
-						/>
-					</View>
-				)}
+      showAlert({
+        isVisible: true,
+        autodismiss: 5000,
+        content: 'clipboard-alert',
+        data: { msg: strings('send.warn_network_change') + network },
+      });
+    } catch (e) {
+      let alertMessage;
+      switch (e.message) {
+        case NetworkSwitchErrorType.missingNetworkId:
+          alertMessage = strings('send.network_missing_id');
+          break;
+        default:
+          alertMessage = strings('send.network_not_found_description', {
+            chain_id: chainId,
+          });
+      }
+      Alert.alert(strings('send.network_not_found_title'), alertMessage);
+    }
+  };
 
-				<View style={baseStyles.flexGrow}>
-					{!toSelectedAddressReady ? (
-						<AddressList
-							inputSearch={toSelectedAddress}
-							onAccountPress={this.onToSelectedAddressChange}
-							onAccountLongPress={dummy}
-						/>
-					) : (
-						<View style={styles.nextActionWrapper}>
-							{addToAddressToAddressBook && (
-								<TouchableOpacity
-									style={styles.myAccountsTouchable}
-									onPress={this.toggleAddToAddressBookModal}
-									testID={'add-address-button'}
-								>
-									<Text style={styles.myAccountsText}>
-										{strings('address_book.add_this_address')}
-									</Text>
-								</TouchableOpacity>
-							)}
-							<View style={styles.footerContainer} testID={'no-eth-message'}>
-								{!isPaymentChannelTransaction && balanceIsZero && (
-									<View style={styles.warningContainer}>
-										<WarningMessage
-											warningMessage={
-												<>
-													{strings('transaction.not_enough_for_gas')}
+  onScan = () => {
+    this.props.navigation.navigate(
+      ...createQRScannerNavDetails({
+        onScanSuccess: (meta) => {
+          if (meta.chain_id) {
+            this.handleNetworkSwitch(meta.chain_id);
+          }
+          if (meta.target_address) {
+            this.onToSelectedAddressChange(meta.target_address);
+          }
+        },
+        origin: Routes.SEND_FLOW.SEND_TO,
+      }),
+    );
+  };
 
-													{this.renderBuyEth()}
-												</>
-											}
-										/>
-									</View>
-								)}
-								{!errorContinue && (
-									<View style={styles.buttonNextWrapper}>
-										<StyledButton
-											type={'confirm'}
-											containerStyle={styles.buttonNext}
-											onPress={this.onTransactionDirectionSet}
-											testID={'address-book-next-button'}
-										>
-											{strings('address_book.next')}
-										</StyledButton>
-									</View>
-								)}
-							</View>
-						</View>
-					)}
-				</View>
+  onTransactionDirectionSet = async () => {
+    const { setRecipient, navigation, providerType, addRecent } = this.props;
+    const {
+      fromSelectedAddress,
+      toAccount,
+      toEnsName,
+      toSelectedAddressName,
+      fromAccountName,
+      toEnsAddressResolved,
+    } = this.state;
+    if (!this.isAddressSaved()) {
+      const addressError = await this.validateToAddress();
+      if (addressError) return;
+    }
+    const toAddress = toEnsAddressResolved || toAccount;
+    addRecent(toAddress);
+    setRecipient(
+      fromSelectedAddress,
+      toAddress,
+      toEnsName,
+      toSelectedAddressName,
+      fromAccountName,
+    );
+    InteractionManager.runAfterInteractions(() => {
+      Analytics.trackEventWithParameters(
+        ANALYTICS_EVENT_OPTS.SEND_FLOW_ADDS_RECIPIENT,
+        {
+          network: providerType,
+        },
+      );
+    });
+    navigation.navigate('Amount');
+  };
 
-				{this.renderFromAccountModal()}
-				{this.renderAddToAddressBookModal()}
-			</SafeAreaView>
-		);
-	};
+  renderAddToAddressBookModal = () => {
+    const { addToAddressBookModalVisible, alias } = this.state;
+    const colors = this.context.colors || mockTheme.colors;
+    const themeAppearance = this.context.themeAppearance || 'light';
+    const styles = createStyles(colors);
+
+    return (
+      <ActionModal
+        modalVisible={addToAddressBookModalVisible}
+        confirmText={strings('address_book.save')}
+        cancelText={strings('address_book.cancel')}
+        onCancelPress={this.toggleAddToAddressBookModal}
+        onRequestClose={this.toggleAddToAddressBookModal}
+        onConfirmPress={this.onSaveToAddressBook}
+        cancelButtonMode={'normal'}
+        confirmButtonMode={'confirm'}
+        confirmDisabled={!alias}
+      >
+        <View style={styles.addToAddressBookRoot}>
+          <View
+            style={styles.addToAddressBookWrapper}
+            testID={ADD_ADDRESS_MODAL_CONTAINER_ID}
+          >
+            <View style={baseStyles.flexGrow}>
+              <Text style={styles.addTextTitle}>
+                {strings('address_book.add_to_address_book')}
+              </Text>
+              <Text style={styles.addTextSubtitle}>
+                {strings('address_book.enter_an_alias')}
+              </Text>
+              <View style={styles.addInputWrapper}>
+                <View style={styles.input}>
+                  <TextInput
+                    autoFocus
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={this.onChangeAlias}
+                    placeholder={strings(
+                      'address_book.enter_an_alias_placeholder',
+                    )}
+                    placeholderTextColor={colors.text.muted}
+                    spellCheck={false}
+                    style={styles.addTextInput}
+                    numberOfLines={1}
+                    onBlur={this.onBlur}
+                    onFocus={this.onInputFocus}
+                    onSubmitEditing={this.onFocus}
+                    value={alias}
+                    keyboardAppearance={themeAppearance}
+                    testID={ENTER_ALIAS_INPUT_BOX_ID}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </ActionModal>
+    );
+  };
+
+  renderFromAccountModal = () => {
+    const { identities, keyrings, ticker } = this.props;
+    const { fromAccountModalVisible, fromSelectedAddress } = this.state;
+    const colors = this.context.colors || mockTheme.colors;
+    const styles = createStyles(colors);
+
+    return (
+      <Modal
+        isVisible={fromAccountModalVisible}
+        style={styles.bottomModal}
+        onBackdropPress={this.toggleFromAccountModal}
+        onBackButtonPress={this.toggleFromAccountModal}
+        onSwipeComplete={this.toggleFromAccountModal}
+        swipeDirection={'down'}
+        propagateSwipe
+        backdropColor={colors.overlay.default}
+        backdropOpacity={1}
+      >
+        <AccountList
+          enableAccountsAddition={false}
+          identities={identities}
+          selectedAddress={fromSelectedAddress}
+          keyrings={keyrings}
+          onAccountChange={this.onAccountChange}
+          ticker={ticker}
+        />
+      </Modal>
+    );
+  };
+
+  onToInputFocus = () => {
+    const { toInputHighlighted } = this.state;
+    this.setState({ toInputHighlighted: !toInputHighlighted });
+  };
+
+  goToBuy = () => {
+    this.props.navigation.navigate(Routes.FIAT_ON_RAMP_AGGREGATOR.ID);
+    InteractionManager.runAfterInteractions(() => {
+      AnalyticsV2.trackEvent(AnalyticsV2.ANALYTICS_EVENTS.BUY_BUTTON_CLICKED, {
+        button_location: 'Send Flow warning',
+        button_copy: 'Buy Native Token',
+        chain_id_destination: this.props.chainId,
+      });
+    });
+  };
+
+  renderBuyEth = () => {
+    const colors = this.context.colors || mockTheme.colors;
+    const styles = createStyles(colors);
+
+    if (!allowedToBuy(this.props.network)) {
+      return null;
+    }
+
+    return (
+      <>
+        <Text bold style={styles.buyEth} onPress={this.goToBuy}>
+          {strings('fiat_on_ramp.buy', {
+            ticker: getTicker(this.props.ticker),
+          })}
+        </Text>
+      </>
+    );
+  };
+
+  renderAddressError = (addressError) =>
+    addressError === SYMBOL_ERROR ? (
+      <Fragment>
+        <Text>{strings('transaction.tokenContractAddressWarning_1')}</Text>
+        <Text bold>{strings('transaction.tokenContractAddressWarning_2')}</Text>
+        <Text>{strings('transaction.tokenContractAddressWarning_3')}</Text>
+      </Fragment>
+    ) : (
+      addressError
+    );
+
+  render = () => {
+    const { ticker, addressBook, network } = this.props;
+    const {
+      fromSelectedAddress,
+      fromAccountName,
+      fromAccountBalance,
+      toAccount,
+      toSelectedAddressReady,
+      toSelectedAddressName,
+      addToAddressToAddressBook,
+      addressError,
+      balanceIsZero,
+      toInputHighlighted,
+      inputWidth,
+      errorContinue,
+      isOnlyWarning,
+      confusableCollection,
+      isFromAddressBook,
+      toEnsAddressResolved,
+    } = this.state;
+    const colors = this.context.colors || mockTheme.colors;
+    const styles = createStyles(colors);
+
+    const checksummedAddress = toAccount && toChecksumAddress(toAccount);
+    const existingContact =
+      checksummedAddress &&
+      addressBook[network] &&
+      addressBook[network][checksummedAddress];
+    const displayConfusableWarning =
+      !existingContact && confusableCollection && !!confusableCollection.length;
+    const displayAsWarning =
+      confusableCollection &&
+      confusableCollection.length &&
+      !confusableCollection.some(hasZeroWidthPoints);
+    const explanations =
+      displayConfusableWarning &&
+      getConfusablesExplanations(confusableCollection);
+
+    return (
+      <SafeAreaView
+        edges={['bottom']}
+        style={styles.wrapper}
+        testID={'send-screen'}
+      >
+        <View style={styles.imputWrapper}>
+          <AddressFrom
+            onPressIcon={this.toggleFromAccountModal}
+            fromAccountAddress={fromSelectedAddress}
+            fromAccountName={fromAccountName}
+            fromAccountBalance={fromAccountBalance}
+          />
+          <AddressTo
+            inputRef={this.addressToInputRef}
+            highlighted={toInputHighlighted}
+            addressToReady={toSelectedAddressReady}
+            toSelectedAddress={toEnsAddressResolved || toAccount}
+            toAddressName={toSelectedAddressName}
+            onToSelectedAddressChange={this.onToSelectedAddressChange}
+            onScan={this.onScan}
+            onClear={this.onToClear}
+            onInputFocus={this.onToInputFocus}
+            onInputBlur={this.onToInputFocus}
+            onSubmit={this.onTransactionDirectionSet}
+            inputWidth={inputWidth}
+            confusableCollection={
+              (!existingContact && confusableCollection) || []
+            }
+            isFromAddressBook={isFromAddressBook}
+          />
+        </View>
+
+        {!toSelectedAddressReady && !!toAccount && (
+          <View style={styles.warningContainer}>
+            <WarningMessage
+              warningMessage={
+                toAccount.substring(0, 2) === '0x'
+                  ? strings('transaction.address_invalid')
+                  : strings('transaction.ens_not_found')
+              }
+            />
+          </View>
+        )}
+
+        {!toSelectedAddressReady ? (
+          <AddressList
+            inputSearch={toAccount}
+            onAccountPress={this.onToSelectedAddressChange}
+            onAccountLongPress={dummy}
+          />
+        ) : (
+          <View style={styles.nextActionWrapper}>
+            <ScrollView>
+              {addressError && addressError !== CONTACT_ALREADY_SAVED && (
+                <View
+                  style={styles.addressErrorWrapper}
+                  testID={'address-error'}
+                >
+                  <ErrorMessage
+                    errorMessage={this.renderAddressError(addressError)}
+                    errorContinue={!!errorContinue}
+                    onContinue={this.onTransactionDirectionSet}
+                    isOnlyWarning={!!isOnlyWarning}
+                  />
+                </View>
+              )}
+              {displayConfusableWarning && (
+                <View
+                  style={[
+                    styles.confusabeError,
+                    displayAsWarning && styles.confusabeWarning,
+                  ]}
+                >
+                  <View style={styles.warningIcon}>
+                    <Icon
+                      size={16}
+                      color={
+                        displayAsWarning
+                          ? colors.warning.default
+                          : colors.error.default
+                      }
+                      name="exclamation-triangle"
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.confusableTitle}>
+                      {strings('transaction.confusable_title')}
+                    </Text>
+                    <Text style={styles.confusableMsg}>
+                      {strings('transaction.confusable_msg')}{' '}
+                      {explanations.join(', ')}.
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {addToAddressToAddressBook && (
+                <TouchableOpacity
+                  style={styles.myAccountsTouchable}
+                  onPress={this.toggleAddToAddressBookModal}
+                  testID={'add-address-button'}
+                >
+                  <Text style={styles.myAccountsText}>
+                    {strings('address_book.add_this_address')}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {balanceIsZero && (
+                <View style={styles.warningContainer}>
+                  <WarningMessage
+                    warningMessage={
+                      <>
+                        {strings('transaction.not_enough_for_gas', {
+                          ticker: getTicker(ticker),
+                        })}
+
+                        {this.renderBuyEth()}
+                      </>
+                    }
+                  />
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {!errorContinue && (
+          <View style={styles.footerContainer} testID={'no-eth-message'}>
+            <View style={styles.buttonNextWrapper}>
+              <StyledButton
+                type={'confirm'}
+                containerStyle={styles.buttonNext}
+                onPress={this.onTransactionDirectionSet}
+                testID={ADDRESS_BOOK_NEXT_BUTTON}
+                disabled={!toSelectedAddressReady}
+              >
+                {strings('address_book.next')}
+              </StyledButton>
+            </View>
+          </View>
+        )}
+
+        {this.renderFromAccountModal()}
+        {this.renderAddToAddressBookModal()}
+      </SafeAreaView>
+    );
+  };
 }
 
-const mapStateToProps = state => ({
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
-	addressBook: state.engine.backgroundState.AddressBookController.addressBook,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
-	selectedAsset: state.transaction.selectedAsset,
-	identities: state.engine.backgroundState.PreferencesController.identities,
-	keyrings: state.engine.backgroundState.KeyringController.keyrings,
-	ticker: state.engine.backgroundState.NetworkController.provider.ticker,
-	network: state.engine.backgroundState.NetworkController.network,
-	providerType: state.engine.backgroundState.NetworkController.provider.type,
-	isPaymentChannelTransaction: state.transaction.paymentChannelTransaction
+SendFlow.contextType = ThemeContext;
+
+const mapStateToProps = (state) => ({
+  accounts: state.engine.backgroundState.AccountTrackerController.accounts,
+  addressBook: state.engine.backgroundState.AddressBookController.addressBook,
+  chainId: state.engine.backgroundState.NetworkController.provider.chainId,
+  selectedAddress:
+    state.engine.backgroundState.PreferencesController.selectedAddress,
+  selectedAsset: state.transaction.selectedAsset,
+  identities: state.engine.backgroundState.PreferencesController.identities,
+  keyrings: state.engine.backgroundState.KeyringController.keyrings,
+  ticker: state.engine.backgroundState.NetworkController.provider.ticker,
+  network: state.engine.backgroundState.NetworkController.network,
+  providerType: state.engine.backgroundState.NetworkController.provider.type,
+  isPaymentRequest: state.transaction.paymentRequest,
+  frequentRpcList:
+    state.engine.backgroundState.PreferencesController.frequentRpcList,
 });
 
-const mapDispatchToProps = dispatch => ({
-	setRecipient: (from, to, ensRecipient, transactionToName, transactionFromName) =>
-		dispatch(setRecipient(from, to, ensRecipient, transactionToName, transactionFromName)),
-	newAssetTransaction: selectedAsset => dispatch(newAssetTransaction(selectedAsset)),
-	setSelectedAsset: selectedAsset => dispatch(setSelectedAsset(selectedAsset))
+const mapDispatchToProps = (dispatch) => ({
+  addRecent: (address) => dispatch(addRecent(address)),
+  setRecipient: (
+    from,
+    to,
+    ensRecipient,
+    transactionToName,
+    transactionFromName,
+  ) =>
+    dispatch(
+      setRecipient(
+        from,
+        to,
+        ensRecipient,
+        transactionToName,
+        transactionFromName,
+      ),
+    ),
+  newAssetTransaction: (selectedAsset) =>
+    dispatch(newAssetTransaction(selectedAsset)),
+  setSelectedAsset: (selectedAsset) =>
+    dispatch(setSelectedAsset(selectedAsset)),
+  showAlert: (config) => dispatch(showAlert(config)),
 });
 
-export default connect(
-	mapStateToProps,
-	mapDispatchToProps
-)(SendFlow);
+export default connect(mapStateToProps, mapDispatchToProps)(SendFlow);
