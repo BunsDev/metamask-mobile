@@ -3,6 +3,9 @@ module.exports = {
   root: true,
   parser: 'babel-eslint',
   extends: [
+    // @react-native-community
+    // - Depends on babel-eslint parser
+    // - Migrated to @react-native/eslint-config after v3.2.0
     '@react-native-community',
     'eslint:recommended',
     'plugin:import/warnings',
@@ -13,6 +16,18 @@ module.exports = {
     {
       files: ['*.{ts,tsx}'],
       extends: ['@metamask/eslint-config-typescript'],
+      rules: {
+        // TODO: re-enable
+        'jsdoc/no-types': 'off',
+      },
+    },
+    {
+      files: ['scripts/**/*.js'],
+      rules: {
+        'no-console': 0,
+        'import/no-commonjs': 0,
+        'import/no-nodejs-modules': 0,
+      },
     },
   ],
 
@@ -30,8 +45,10 @@ module.exports = {
     by: true,
     beforeEach: true,
     device: true,
-    waitFor: true,
     __DEV__: true,
+    driver: true,
+    $: true,
+    $$: true,
   },
 
   settings: {

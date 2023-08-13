@@ -14,11 +14,12 @@ import URLPARSE from 'url-parse';
 import scaling from '../../../util/scaling';
 import { isWebUri } from 'valid-url';
 import FAIcon from 'react-native-vector-icons/FontAwesome';
-import { MetaMetricsEvents } from '../../../core/Analytics';
 import InfoModal from '../Swaps/components/InfoModal';
 import ImageIcons from '../../UI/ImageIcon';
 import { useDispatch } from 'react-redux';
-import { trackEvent } from '../../../util/analyticsV2';
+import { MetaMetricsEvents } from '../../../core/Analytics';
+import AnalyticsV2 from '../../../util/analyticsV2';
+
 import { useTheme } from '../../../util/theme';
 import { networkSwitched } from '../../../actions/onboardNetwork';
 import generateTestId from '../../../../wdio/utils/generateTestId';
@@ -32,7 +33,7 @@ import {
   APPROVE_NETWORK_MODAL,
 } from '../../../../wdio/screen-objects/testIDs/Screens/NetworksScreen.testids';
 
-const createStyles = (colors: any) =>
+const createStyles = (colors) =>
   StyleSheet.create({
     bottomModal: {
       justifyContent: 'flex-end',
@@ -145,40 +146,9 @@ const NetworkModals = (props: NetworkProps) => {
   };
 
   const addNetwork = async () => {
-    const { PreferencesController } = Engine.context as any;
-    let formChainId = chainId.trim().toLowerCase();
-
-    if (!formChainId.startsWith('0x')) {
-      formChainId = `0x${parseInt(formChainId, 10).toString(16)}`;
-    }
-
     const validUrl = validateRpcUrl(rpcUrl);
 
-    if (validUrl) {
-      const url = new URLPARSE(rpcUrl);
-      const decimalChainId = getDecimalChainId(chainId);
-      !isprivateConnection(url.hostname) && url.set('protocol', 'https:');
-      PreferencesController.addToFrequentRpcList(
-        url.href,
-        decimalChainId,
-        ticker,
-        nickname,
-        {
-          blockExplorerUrl,
-        },
-      );
-
-      const analyticsParamsAdd = {
-        chain_id: decimalChainId,
-        source: 'Popular network list',
-        symbol: ticker,
-      };
-
-      trackEvent(MetaMetricsEvents.NETWORK_ADDED, analyticsParamsAdd);
-      setNetworkAdded(true);
-    } else {
-      setNetworkAdded(false);
-    }
+    setNetworkAdded(validUrl);
   };
 
   const showToolTip = () => setShowInfo(!showInfo);
@@ -186,14 +156,47 @@ const NetworkModals = (props: NetworkProps) => {
   const goToLink = () => Linking.openURL(strings('networks.security_link'));
 
   const closeModal = () => {
+    const { PreferencesController } = Engine.context;
+    const url = new URLPARSE(rpcUrl);
+    const decimalChainId = getDecimalChainId(chainId);
+    !isprivateConnection(url.hostname) && url.set('protocol', 'https:');
+    PreferencesController.addToFrequentRpcList(
+      url.href,
+      decimalChainId,
+      ticker,
+      nickname,
+      {
+        blockExplorerUrl,
+      },
+    );
     onClose();
   };
 
   const switchNetwork = () => {
-    const { NetworkController, CurrencyRateController } = Engine.context as any;
+    const { NetworkController, CurrencyRateController, PreferencesController } =
+      Engine.context;
     const url = new URLPARSE(rpcUrl);
     const decimalChainId = getDecimalChainId(chainId);
     CurrencyRateController.setNativeCurrency(ticker);
+    !isprivateConnection(url.hostname) && url.set('protocol', 'https:');
+    PreferencesController.addToFrequentRpcList(
+      url.href,
+      decimalChainId,
+      ticker,
+      nickname,
+      {
+        blockExplorerUrl,
+      },
+    );
+
+    const analyticsParamsAdd = {
+      chain_id: decimalChainId,
+      source: 'Popular network list',
+      symbol: ticker,
+    };
+
+    AnalyticsV2.trackEvent(MetaMetricsEvents.NETWORK_ADDED, analyticsParamsAdd);
+
     NetworkController.setRpcTarget(url.href, decimalChainId, ticker, nickname);
     closeModal();
     shouldNetworkSwitchPopToWallet

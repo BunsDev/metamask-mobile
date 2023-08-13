@@ -8,11 +8,8 @@ import {
   TouchableOpacity,
   InteractionManager,
 } from 'react-native';
-import { connect } from 'react-redux';
-import { GAS_ESTIMATE_TYPES } from '@metamask/gas-fee-controller';
-
 import { fontStyles } from '../../../../styles/common';
-import { MetaMetricsEvents } from '../../../../core/Analytics';
+import { connect } from 'react-redux';
 import {
   isBN,
   weiToFiat,
@@ -32,22 +29,32 @@ import {
   calculateERC20EIP1559,
 } from '../../../../util/transactions';
 import { sumHexWEIs } from '../../../../util/conversions';
+import Analytics from '../../../../core/Analytics/Analytics';
+import { MetaMetricsEvents } from '../../../../core/Analytics';
 import { getNetworkNonce, isTestNet } from '../../../../util/networks';
-import { trackLegacyEvent } from '../../../../util/analyticsV2';
 import CustomNonceModal from '../../../UI/CustomNonceModal';
 import { setNonce, setProposedNonce } from '../../../../actions/transaction';
 import TransactionReviewEIP1559 from '../TransactionReviewEIP1559';
+import { GAS_ESTIMATE_TYPES } from '@metamask/gas-fee-controller';
 import CustomNonce from '../../../UI/CustomNonce';
 import Logger from '../../../../util/Logger';
 import { ThemeContext, mockTheme } from '../../../../util/theme';
 import AppConstants from '../../../../core/AppConstants';
 import WarningMessage from '../../../Views/SendFlow/WarningMessage';
-import { allowedToBuy } from '../../FiatOnRampAggregator';
 import {
+  selectChainId,
   selectNetwork,
   selectTicker,
 } from '../../../../selectors/networkController';
+import {
+  selectConversionRate,
+  selectCurrentCurrency,
+  selectNativeCurrency,
+} from '../../../../selectors/currencyRateController';
+import { selectContractExchangeRates } from '../../../../selectors/tokenRatesController';
 import { createBrowserNavDetails } from '../../../Views/Browser';
+import { isNetworkBuyNativeTokenSupported } from '../../Ramp/utils';
+import { getRampNetworks } from '../../../../reducers/fiatOrders';
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -215,6 +222,10 @@ class TransactionReviewInformation extends PureComponent {
     originWarning: PropTypes.bool,
     gasSelected: PropTypes.string,
     multiLayerL1FeeTotal: PropTypes.string,
+    /**
+     * Boolean that indicates if the network supports buy
+     */
+    isNativeTokenBuySupported: PropTypes.bool,
   };
 
   state = {
@@ -282,7 +293,7 @@ class TransactionReviewInformation extends PureComponent {
       Logger.error(error, 'Navigation: Error when navigating to buy ETH.');
     }
     InteractionManager.runAfterInteractions(() => {
-      trackLegacyEvent(MetaMetricsEvents.RECEIVE_OPTIONS_PAYMENT_REQUEST);
+      Analytics.trackEvent(MetaMetricsEvents.RECEIVE_OPTIONS_PAYMENT_REQUEST);
     });
   };
 
@@ -628,7 +639,7 @@ class TransactionReviewInformation extends PureComponent {
       showCustomNonce,
       gasEstimateType,
       gasSelected,
-      network,
+      isNativeTokenBuySupported,
     } = this.props;
     const { nonce } = this.props.transaction;
     const colors = this.context.colors || mockTheme.colors;
@@ -673,7 +684,7 @@ class TransactionReviewInformation extends PureComponent {
         )}
         {!!error && (
           <View style={styles.errorWrapper}>
-            {this.isTestNetwork() || allowedToBuy(network) ? (
+            {this.isTestNetwork() || isNativeTokenBuySupported ? (
               <TouchableOpacity onPress={errorPress}>
                 <Text style={styles.error}>{error}</Text>
                 {over && (
@@ -711,18 +722,18 @@ class TransactionReviewInformation extends PureComponent {
 
 const mapStateToProps = (state) => ({
   network: selectNetwork(state),
-  conversionRate:
-    state.engine.backgroundState.CurrencyRateController.conversionRate,
-  currentCurrency:
-    state.engine.backgroundState.CurrencyRateController.currentCurrency,
-  contractExchangeRates:
-    state.engine.backgroundState.TokenRatesController.contractExchangeRates,
+  conversionRate: selectConversionRate(state),
+  currentCurrency: selectCurrentCurrency(state),
+  nativeCurrency: selectNativeCurrency(state),
+  contractExchangeRates: selectContractExchangeRates(state),
   transaction: getNormalizedTxState(state),
   ticker: selectTicker(state),
   primaryCurrency: state.settings.primaryCurrency,
   showCustomNonce: state.settings.showCustomNonce,
-  nativeCurrency:
-    state.engine.backgroundState.CurrencyRateController.nativeCurrency,
+  isNativeTokenBuySupported: isNetworkBuyNativeTokenSupported(
+    selectChainId(state),
+    getRampNetworks(state),
+  ),
 });
 
 const mapDispatchToProps = (dispatch) => ({

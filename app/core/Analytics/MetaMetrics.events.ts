@@ -12,14 +12,14 @@ const generateOpt = (
 ): IMetaMetricsEvent => {
   if (action || description) {
     return {
-      name,
+      category: name,
       properties: {
         ...(action && { action }),
         ...(description && { name: description }),
       },
     };
   }
-  return { name };
+  return { category: name };
 };
 
 const ONBOARDING_WIZARD_STEP_DESCRIPTION = {
@@ -63,6 +63,7 @@ enum EVENT_NAME {
   // Connect request
   CONNECT_REQUEST_STARTED = 'Connect Request Started',
   CONNECT_REQUEST_COMPLETED = 'Connect Request Completed',
+  CONNECT_REQUEST_OTPFAILURE = 'Connect Request OTP Failure',
   CONNECT_REQUEST_CANCELLED = 'Connect Request Cancelled',
 
   // Wallet
@@ -75,10 +76,14 @@ enum EVENT_NAME {
   NETWORK_ADDED = 'Network Added',
   NETWORK_REQUESTED = 'Network Requested',
   NETWORK_REQUEST_REJECTED = 'Network Request Rejected',
+  NETWORK_SELECTOR = 'Network Menu Opened',
 
   // Send transaction
   SEND_TRANSACTION_STARTED = 'Send Transaction Started',
   SEND_TRANSACTION_COMPLETED = 'Send Transaction Completed',
+
+  // Portfolio
+  PORTFOLIO_LINK_CLICKED = 'Portfolio Link Clicked',
 
   // On-ramp [LEGACY]
   ONRAMP_OPENED = 'On-ramp Opened',
@@ -124,9 +129,6 @@ enum EVENT_NAME {
   WALLET_IMPORT_STARTED = 'Wallet Import Started',
   WALLET_IMPORT_ATTEMPTED = 'Wallet Import Attempted',
   WALLET_IMPORTED = 'Wallet Imported',
-  WALLET_SYNC_STARTED = 'Wallet Sync Started',
-  WALLET_SYNC_ATTEMPTED = 'Wallet Sync Attempted',
-  WALLET_SYNC_SUCCESSFUL = 'Wallet Sync Successful',
   WALLET_CREATION_ATTEMPTED = 'Wallet Creation Attempted',
   WALLET_CREATED = 'Wallet Created',
   WALLET_SETUP_FAILURE = 'Wallet Setup Failure',
@@ -149,6 +151,10 @@ enum EVENT_NAME {
 
   // Security & Privacy Settings
   VIEW_SECURITY_SETTINGS = 'Views Security & Privacy',
+
+  // Settings
+  SETTINGS_VIEWED = 'Settings Viewed',
+  SETTINGS_UPDATED = 'Settings Updated',
 
   // Reveal SRP
   REVEAL_SRP_CTA = 'Clicks Reveal Secret Recovery Phrase',
@@ -255,6 +261,9 @@ enum EVENT_NAME {
   SCREENSHOT_LEARN_MORE = 'Clicked Screenshot Warning Learn More',
   SCREENSHOT_OK = 'Clicked Screenshot Warning OK',
 
+  //Terms of Use
+  USER_TERMS_SHOWN = 'Terms of Use Shown',
+  USER_TERMS_ACCEPTED = 'Terms of Use Accepted',
   // Reveal SRP Quiz
   SRP_REVEAL_QUIZ_PROMPT_SEEN = 'SRP reveal quiz prompt seen',
   SRP_REVEAL_START_CTA_SELECTED = 'SRP reveal get started CTA selected',
@@ -289,6 +298,15 @@ enum EVENT_NAME {
 
   // Delete Wallet Modal
   DELETE_WALLET_MODAL_WALLET_DELETED = 'Delete Wallet Modal Wallet Deleted',
+
+  // Tab Bar Actions
+  ACTIONS_BUTTON_CLICKED = 'Global Actions Button Clicked',
+  RECEIVE_BUTTON_CLICKED = 'Receive Button Clicked',
+  SWAP_BUTTON_CLICKED = 'Swaps Button Clicked',
+  SEND_BUTTON_CLICKED = 'Send Button Clicked',
+
+  // Edit account name
+  ACCOUNT_RENAMED = 'Account Renamed',
 }
 
 enum ACTIONS {
@@ -332,14 +350,14 @@ enum ACTIONS {
   SWAP = 'Swap',
   PERMISSION_NEW_ACCOUNT = 'Connected new account(s)',
   PERMISSION_REVOKE_ACCOUNT = 'Revoked account(s)',
+  ADVANCED_SETTINGS_ETH_SIGN_FRICTION_FIRST_STEP = 'eth_sign_checkbox_seen',
+  ADVANCED_SETTINGS_ETH_SIGN_FRICTION_SECOND_STEP = 'eth_sign_input_seen',
+  ADVANCED_SETTINGS_ETH_SIGN_ENABLED = 'eth_sign_enabled',
+  ADVANCED_SETTINGS_ETH_SIGN_DISABLED = 'eth_sign_disabled',
 }
 
 const events = {
-  // V2 TRACKING EVENTS
-
-  // Error
   ERROR: generateOpt(EVENT_NAME.ERROR),
-  // Approval
   APPROVAL_STARTED: generateOpt(EVENT_NAME.APPROVAL_STARTED),
   APPROVAL_COMPLETED: generateOpt(EVENT_NAME.APPROVAL_COMPLETED),
   APPROVAL_CANCELLED: generateOpt(EVENT_NAME.APPROVAL_CANCELLED),
@@ -364,6 +382,9 @@ const events = {
   SIGN_REQUEST_CANCELLED: generateOpt(EVENT_NAME.SIGN_REQUEST_CANCELLED),
   CONNECT_REQUEST_STARTED: generateOpt(EVENT_NAME.CONNECT_REQUEST_STARTED),
   CONNECT_REQUEST_COMPLETED: generateOpt(EVENT_NAME.CONNECT_REQUEST_COMPLETED),
+  CONNECT_REQUEST_OTPFAILURE: generateOpt(
+    EVENT_NAME.CONNECT_REQUEST_OTPFAILURE,
+  ),
   CONNECT_REQUEST_CANCELLED: generateOpt(EVENT_NAME.CONNECT_REQUEST_CANCELLED),
   WALLET_OPENED: generateOpt(EVENT_NAME.WALLET_OPENED),
   TOKEN_ADDED: generateOpt(EVENT_NAME.TOKEN_ADDED),
@@ -395,6 +416,7 @@ const events = {
   ONRAMP_PURCHASE_COMPLETED_LEGACY: generateOpt(
     EVENT_NAME.ONRAMP_PURCHASE_COMPLETED_LEGACY,
   ),
+  PORTFOLIO_LINK_CLICKED: generateOpt(EVENT_NAME.PORTFOLIO_LINK_CLICKED),
   WALLET_SECURITY_STARTED: generateOpt(EVENT_NAME.WALLET_SECURITY_STARTED),
   WALLET_SECURITY_MANUAL_BACKUP_INITIATED: generateOpt(
     EVENT_NAME.WALLET_SECURITY_MANUAL_BACKUP_INITIATED,
@@ -451,9 +473,6 @@ const events = {
   WALLET_IMPORT_STARTED: generateOpt(EVENT_NAME.WALLET_IMPORT_STARTED),
   WALLET_IMPORT_ATTEMPTED: generateOpt(EVENT_NAME.WALLET_IMPORT_ATTEMPTED),
   WALLET_IMPORTED: generateOpt(EVENT_NAME.WALLET_IMPORTED),
-  WALLET_SYNC_STARTED: generateOpt(EVENT_NAME.WALLET_SYNC_STARTED),
-  WALLET_SYNC_ATTEMPTED: generateOpt(EVENT_NAME.WALLET_SYNC_ATTEMPTED),
-  WALLET_SYNC_SUCCESSFUL: generateOpt(EVENT_NAME.WALLET_SYNC_SUCCESSFUL),
   WALLET_CREATION_ATTEMPTED: generateOpt(EVENT_NAME.WALLET_CREATION_ATTEMPTED),
   WALLET_CREATED: generateOpt(EVENT_NAME.WALLET_CREATED),
   WALLET_SETUP_FAILURE: generateOpt(EVENT_NAME.WALLET_SETUP_FAILURE),
@@ -470,7 +489,9 @@ const events = {
   BROWSER_SHARE_SITE: generateOpt(EVENT_NAME.BROWSER_SHARE_SITE),
   BROWSER_RELOAD: generateOpt(EVENT_NAME.BROWSER_RELOAD),
   BROWSER_ADD_FAVORITES: generateOpt(EVENT_NAME.BROWSER_ADD_FAVORITES),
+  // Security & Privacy Settings
   VIEW_SECURITY_SETTINGS: generateOpt(EVENT_NAME.VIEW_SECURITY_SETTINGS),
+  // Reveal SRP
   REVEAL_SRP_CTA: generateOpt(EVENT_NAME.REVEAL_SRP_CTA),
   REVEAL_SRP_SCREEN: generateOpt(EVENT_NAME.REVEAL_SRP_SCREEN),
   GO_BACK_SRP_SCREEN: generateOpt(EVENT_NAME.GO_BACK_SRP_SCREEN),
@@ -570,6 +591,8 @@ const events = {
   SCREENSHOT_WARNING: generateOpt(EVENT_NAME.SCREENSHOT_WARNING),
   SCREENSHOT_LEARN_MORE: generateOpt(EVENT_NAME.SCREENSHOT_LEARN_MORE),
   SCREENSHOT_OK: generateOpt(EVENT_NAME.SCREENSHOT_OK),
+  USER_TERMS_SHOWN: generateOpt(EVENT_NAME.USER_TERMS_SHOWN),
+  USER_TERMS_ACCEPTED: generateOpt(EVENT_NAME.USER_TERMS_ACCEPTED),
   SRP_REVEAL_QUIZ_PROMPT_SEEN: generateOpt(
     EVENT_NAME.SRP_REVEAL_QUIZ_PROMPT_SEEN,
   ),
@@ -647,6 +670,33 @@ const events = {
   // Delete Wallet Modal
   DELETE_WALLET_MODAL_WALLET_DELETED: generateOpt(
     EVENT_NAME.DELETE_WALLET_MODAL_WALLET_DELETED,
+  ),
+
+  ACTIONS_BUTTON_CLICKED: generateOpt(EVENT_NAME.ACTIONS_BUTTON_CLICKED),
+  RECEIVE_BUTTON_CLICKED: generateOpt(EVENT_NAME.RECEIVE_BUTTON_CLICKED),
+  SWAP_BUTTON_CLICKED: generateOpt(EVENT_NAME.SWAP_BUTTON_CLICKED),
+  SEND_BUTTON_CLICKED: generateOpt(EVENT_NAME.SEND_BUTTON_CLICKED),
+  NETWORK_SELECTOR_PRESSED: generateOpt(EVENT_NAME.NETWORK_SELECTOR),
+
+  // Edit account name
+  ACCOUNT_RENAMED: generateOpt(EVENT_NAME.ACCOUNT_RENAMED),
+
+  // Settings
+  SETTINGS_ADVANCED_ETH_SIGN_FRICTION_FIRST_STEP_VIEWED: generateOpt(
+    EVENT_NAME.SETTINGS_VIEWED,
+    ACTIONS.ADVANCED_SETTINGS_ETH_SIGN_FRICTION_FIRST_STEP,
+  ),
+  SETTINGS_ADVANCED_ETH_SIGN_FRICTION_SECOND_STEP_VIEWED: generateOpt(
+    EVENT_NAME.SETTINGS_VIEWED,
+    ACTIONS.ADVANCED_SETTINGS_ETH_SIGN_FRICTION_SECOND_STEP,
+  ),
+  SETTINGS_ADVANCED_ETH_SIGN_ENABLED: generateOpt(
+    EVENT_NAME.SETTINGS_UPDATED,
+    ACTIONS.ADVANCED_SETTINGS_ETH_SIGN_ENABLED,
+  ),
+  SETTINGS_ADVANCED_ETH_SIGN_DISABLED: generateOpt(
+    EVENT_NAME.SETTINGS_UPDATED,
+    ACTIONS.ADVANCED_SETTINGS_ETH_SIGN_DISABLED,
   ),
 };
 
@@ -738,7 +788,6 @@ enum DESCRIPTION {
   // Dapp Interactions
   DAPP_APPROVE_SCREEN_APPROVE = 'Approve',
   DAPP_APPROVE_SCREEN_CANCEL = 'Cancel',
-  DAPP_APPROVE_SCREEN_EDIT_PERMISSION = 'Edit permission',
   DAPP_APPROVE_SCREEN_EDIT_FEE = 'Edit tx fee',
   DAPP_APPROVE_SCREEN_VIEW_DETAILS = 'View tx details',
   PAYMENTS_SELECTS_DEBIT_OR_ACH = 'Selects debit card or bank account as payment method',
@@ -1104,11 +1153,6 @@ const legacyMetaMetricsEvents = {
     EVENT_NAME.DAPP_INTERACTIONS,
     ACTIONS.APPROVE_REQUEST,
     DESCRIPTION.DAPP_APPROVE_SCREEN_CANCEL,
-  ),
-  DAPP_APPROVE_SCREEN_EDIT_PERMISSION: generateOpt(
-    EVENT_NAME.DAPP_INTERACTIONS,
-    ACTIONS.APPROVE_REQUEST,
-    DESCRIPTION.DAPP_APPROVE_SCREEN_EDIT_PERMISSION,
   ),
   DAPP_APPROVE_SCREEN_EDIT_FEE: generateOpt(
     EVENT_NAME.DAPP_INTERACTIONS,

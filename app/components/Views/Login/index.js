@@ -39,7 +39,10 @@ import {
 import Routes from '../../../constants/navigation/Routes';
 import { passwordRequirementsMet } from '../../../util/password';
 import ErrorBoundary from '../ErrorBoundary';
-import { trackErrorAsAnalytics, trackEvent } from '../../../util/analyticsV2';
+import {
+  trackErrorAsAnalytics,
+  trackEventV2 as trackEvent,
+} from '../../../util/analyticsV2';
 import { toLowerCaseEquals } from '../../../util/general';
 import DefaultPreference from 'react-native-default-preference';
 import { Authentication } from '../../../core';
@@ -62,6 +65,7 @@ import { parseVaultValue } from '../../../util/validators';
 import { getVaultFromBackup } from '../../../core/BackupVault';
 import { containsErrorMessage } from '../../../util/errorHandling';
 import { MetaMetricsEvents } from '../../../core/Analytics';
+import { selectSelectedAddress } from '../../../selectors/preferencesController';
 
 const deviceHeight = Device.getDeviceHeight();
 const breakPoint = deviceHeight < 700;
@@ -445,7 +449,9 @@ class Login extends PureComponent {
     const { current: field } = this.fieldRef;
     field?.blur();
     try {
-      await Authentication.appTriggeredAuth(this.props.selectedAddress);
+      await Authentication.appTriggeredAuth({
+        selectedAddress: this.props.selectedAddress,
+      });
       const onboardingWizard = await DefaultPreference.get(ONBOARDING_WIZARD);
       if (!onboardingWizard) this.props.setOnboardingWizardStep(1);
       this.props.navigation.replace(Routes.ONBOARDING.HOME_NAV);
@@ -515,7 +521,7 @@ class Login extends PureComponent {
     );
 
     return (
-      <ErrorBoundary view="Login">
+      <ErrorBoundary navigation={this.props.navigation} view="Login">
         <SafeAreaView style={styles.mainWrapper}>
           <KeyboardAwareScrollView
             style={styles.wrapper}
@@ -614,8 +620,7 @@ class Login extends PureComponent {
 Login.contextType = ThemeContext;
 
 const mapStateToProps = (state) => ({
-  selectedAddress:
-    state.engine.backgroundState.PreferencesController.selectedAddress,
+  selectedAddress: selectSelectedAddress(state),
   userLoggedIn: state.user.userLoggedIn,
 });
 

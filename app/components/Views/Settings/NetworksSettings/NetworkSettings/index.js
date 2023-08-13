@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { connect } from 'react-redux';
-import { MetaMetricsEvents } from '../../../../../core/Analytics';
 import {
   fontStyles,
   colors as staticColors,
@@ -21,6 +20,7 @@ import Networks, {
   isprivateConnection,
   getAllNetworks,
   isSafeChainId,
+  getIsNetworkOnboarded,
 } from '../../../../../util/networks';
 import { getEtherscanBaseUrl } from '../../../../../util/etherscan';
 import StyledButton from '../../../../UI/StyledButton';
@@ -34,7 +34,8 @@ import { jsonRpcRequest } from '../../../../../util/jsonRpcRequest';
 import Logger from '../../../../../util/Logger';
 import { isPrefixedFormattedHexString } from '../../../../../util/number';
 import AppConstants from '../../../../../core/AppConstants';
-import { trackEvent } from '../../../../../util/analyticsV2';
+import { MetaMetricsEvents } from '../../../../../core/Analytics';
+import AnalyticsV2 from '../../../../../util/analyticsV2';
 import ScrollableTabView from 'react-native-scrollable-tab-view';
 import DefaultTabBar from 'react-native-scrollable-tab-view/DefaultTabBar';
 import PopularList from '../../../../../util/networks/customNetworks';
@@ -43,6 +44,7 @@ import InfoModal from '../../../../UI/Swaps/components/InfoModal';
 import {
   DEFAULT_MAINNET_CUSTOM_NAME,
   MAINNET,
+  NETWORKS_CHAIN_ID,
   PRIVATENETWORK,
   RPC,
 } from '../../../../../constants/network';
@@ -68,6 +70,9 @@ import {
   NETWORKS_SYMBOL_INPUT_FIELD,
   BLOCK_EXPLORER_FIELD,
   REMOVE_NETWORK_BUTTON,
+  CUSTOM_NETWORKS_TAB_ID,
+  POPULAR_NETWORKS_TAB_ID,
+  RPC_WARNING_BANNER_ID,
 } from '../../../../../../wdio/screen-objects/testIDs/Screens/NetworksScreen.testids';
 import Button, {
   ButtonVariants,
@@ -75,6 +80,7 @@ import Button, {
   ButtonWidthTypes,
 } from '../../../../../component-library/components/Buttons/Button';
 import { selectProviderConfig } from '../../../../../selectors/networkController';
+import { selectFrequentRpcList } from '../../../../../selectors/preferencesController';
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -207,7 +213,8 @@ const createStyles = (colors) =>
   });
 
 const allNetworks = getAllNetworks();
-const allNetworksblockExplorerUrl = `https://api.infura.io/v1/jsonrpc/`;
+const allNetworksblockExplorerUrl = (networkName) =>
+  `https://${networkName}.infura.io/v3/`;
 /**
  * Main view for app configurations
  */
@@ -232,7 +239,7 @@ class NetworkSettings extends PureComponent {
     /**
      * returns an array of onboarded networks
      */
-    networkOnboardedState: PropTypes.array,
+    networkOnboardedState: PropTypes.object,
     /**
      * Indicates whether third party API mode is enabled
      */
@@ -284,7 +291,7 @@ class NetworkSettings extends PureComponent {
           ? strings('app_settings.networks_default_title')
           : strings('app_settings.networks_title'),
         navigation,
-        route?.params?.isFullScreenModal,
+        true,
         colors,
       ),
     );
@@ -318,8 +325,12 @@ class NetworkSettings extends PureComponent {
         nickname = networkInformation.name;
         chainId = networkInformation.chainId.toString();
         editable = false;
-        rpcUrl = allNetworksblockExplorerUrl + network;
-        ticker = strings('unit.eth');
+        rpcUrl = allNetworksblockExplorerUrl(network);
+        ticker =
+          networkInformation.chainId.toString() !==
+          NETWORKS_CHAIN_ID.LINEA_GOERLI
+            ? strings('unit.eth')
+            : 'LineaETH';
         // Override values if UI is updating custom mainnet RPC URL.
         if (isCustomMainnet) {
           nickname = DEFAULT_MAINNET_CUSTOM_NAME;
@@ -501,13 +512,11 @@ class NetworkSettings extends PureComponent {
     const isNetworkExists = editable
       ? []
       : await this.checkIfNetworkExists(rpcUrl);
-    let isOnboarded = false;
-    const isNetworkOnboarded = networkOnboardedState.filter(
-      (item) => item.network === sanitizeUrl(rpcUrl),
+
+    const isOnboarded = getIsNetworkOnboarded(
+      stateChainId,
+      networkOnboardedState,
     );
-    if (isNetworkOnboarded.length === 0) {
-      isOnboarded = true;
-    }
 
     const nativeToken = ticker || PRIVATENETWORK;
     const networkType = nickname || rpcUrl;
@@ -562,7 +571,10 @@ class NetworkSettings extends PureComponent {
         source: 'Custom network form',
         symbol: ticker,
       };
-      trackEvent(MetaMetricsEvents.NETWORK_ADDED, analyticsParamsAdd);
+      AnalyticsV2.trackEvent(
+        MetaMetricsEvents.NETWORK_ADDED,
+        analyticsParamsAdd,
+      );
       this.props.showNetworkOnboardingAction({
         networkUrl,
         networkType,
@@ -869,7 +881,10 @@ class NetworkSettings extends PureComponent {
               keyboardAppearance={themeAppearance}
             />
             {warningRpcUrl && (
-              <View style={styles.warningContainer} testID={'rpc-url-warning'}>
+              <View
+                style={styles.warningContainer}
+                testID={RPC_WARNING_BANNER_ID}
+              >
                 <Text style={styles.warningText}>{warningRpcUrl}</Text>
               </View>
             )}
@@ -1052,6 +1067,7 @@ class NetworkSettings extends PureComponent {
                 tabLabel={strings('app_settings.popular').toUpperCase()}
                 key={AppConstants.ADD_CUSTOM_NETWORK_POPULAR_TAB_ID}
                 style={styles.networksWrapper}
+                testID={POPULAR_NETWORKS_TAB_ID}
               >
                 <CustomNetwork
                   isNetworkModalVisible={this.state.showPopularNetworkModal}
@@ -1070,6 +1086,7 @@ class NetworkSettings extends PureComponent {
                   'app_settings.custom_network_name',
                 ).toUpperCase()}
                 key={AppConstants.ADD_CUSTOM_NETWORK_CUSTOM_TAB_ID}
+                testID={CUSTOM_NETWORKS_TAB_ID}
               >
                 {this.customNetwork()}
               </View>
@@ -1118,8 +1135,7 @@ const mapDispatchToProps = (dispatch) => ({
 
 const mapStateToProps = (state) => ({
   providerConfig: selectProviderConfig(state),
-  frequentRpcList:
-    state.engine.backgroundState.PreferencesController.frequentRpcList,
+  frequentRpcList: selectFrequentRpcList(state),
   networkOnboardedState: state.networkOnboarded.networkOnboardedState,
   thirdPartyApiMode: state.privacy.thirdPartyApiMode,
 });

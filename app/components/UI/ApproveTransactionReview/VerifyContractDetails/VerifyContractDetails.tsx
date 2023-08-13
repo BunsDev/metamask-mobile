@@ -14,7 +14,7 @@ import { findBlockExplorerForRpc } from '../../../../util/networks';
 import { RPC } from '../../../../constants/network';
 import TransactionTypes from '../../../../core/TransactionTypes';
 import { safeToChecksumAddress } from '../../../../util/address';
-import { Token as TokenType } from '@metamask/assets-controllers';
+import { selectTokens } from '../../../../selectors/tokensController';
 
 const {
   ASSET: { ERC20, ERC1155, ERC721 },
@@ -28,21 +28,18 @@ const VerifyContractDetails = ({
   showNickname,
   tokenAddress,
   savedContactListToArray,
-  tokenSymbol,
   providerType,
   providerRpcTarget,
   frequentRpcList,
   tokenStandard,
+  tokenSymbol,
 }: VerifyContractDetailsProps) => {
   const [contractNickname, setContractNickname] = React.useState<string>('');
   const [tokenNickname, setTokenNickname] = React.useState<string>('');
   const { colors } = useAppThemeFromContext() || mockTheme;
   const styles = createStyles(colors);
 
-  const tokens = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.TokensController.tokens as TokenType[],
-  );
+  const tokens = useSelector(selectTokens);
 
   const tokenData = useMemo(
     () =>
@@ -52,7 +49,11 @@ const VerifyContractDetails = ({
     [tokens, tokenAddress],
   );
 
-  const tokenSymbolFirstLetter = tokenSymbol?.charAt(0);
+  useEffect(() => {
+    if (tokenSymbol) {
+      setTokenNickname(tokenSymbol);
+    }
+  }, [tokenSymbol]);
 
   useEffect(() => {
     savedContactListToArray.forEach((contact: any) => {
@@ -104,7 +105,6 @@ const VerifyContractDetails = ({
             contractLocalImage={
               tokenData.length ? { uri: tokenData[0]?.image } : undefined
             }
-            tokenSymbol={tokenSymbolFirstLetter && tokenSymbolFirstLetter}
             hasBlockExplorer={Boolean(hasBlockExplorer)}
             onContractPress={() => showNickname(tokenAddress)}
           />

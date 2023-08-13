@@ -6,7 +6,6 @@ import OnboardingCarouselView from '../pages/Onboarding/OnboardingCarouselView';
 import ContractNickNameView from '../pages/ContractNickNameView';
 import SendView from '../pages/SendView';
 
-import DrawerView from '../pages/Drawer/DrawerView';
 import MetaMetricsOptIn from '../pages/Onboarding/MetaMetricsOptInView';
 import WalletView from '../pages/WalletView';
 import EnableAutomaticSecurityChecksView from '../pages/EnableAutomaticSecurityChecksView';
@@ -24,7 +23,10 @@ import WhatsNewModal from '../pages/modals/WhatsNewModal';
 import SecurityAndPrivacy from '../pages/Drawer/Settings/SecurityAndPrivacy/SecurityAndPrivacyView';
 
 import TestHelpers from '../helpers';
+import { acceptTermOfUse } from '../viewHelper';
 import Accounts from '../../wdio/helpers/Accounts';
+import TabBarComponent from '../pages/TabBarComponent';
+import WalletActionsModal from '../pages/modals/WalletActionsModal';
 
 describe('Adding Contract Nickname', () => {
   const APPROVAL_DEEPLINK_URL =
@@ -54,6 +56,7 @@ describe('Adding Contract Nickname', () => {
     await MetaMetricsOptIn.isVisible();
     await MetaMetricsOptIn.tapAgreeButton();
 
+    await acceptTermOfUse();
     await ImportWalletView.isVisible();
   });
 
@@ -70,17 +73,6 @@ describe('Adding Contract Nickname', () => {
     await EnableAutomaticSecurityChecksView.tapNoThanks();
   });
 
-  it('should tap on "Got it" Button in the whats new modal', async () => {
-    // dealing with flakiness on bitrise.
-    await TestHelpers.delay(2500);
-    try {
-      await WhatsNewModal.isVisible();
-      await WhatsNewModal.tapGotItButton();
-    } catch {
-      //
-    }
-  });
-
   it('should dismiss the onboarding wizard', async () => {
     // dealing with flakiness on bitrise.
     await TestHelpers.delay(1000);
@@ -88,6 +80,17 @@ describe('Adding Contract Nickname', () => {
       await OnboardingWizardModal.isVisible();
       await OnboardingWizardModal.tapNoThanksButton();
       await OnboardingWizardModal.isNotVisible();
+    } catch {
+      //
+    }
+  });
+
+  it('should tap on "Got it" Button in the whats new modal', async () => {
+    // dealing with flakiness on bitrise.
+    await TestHelpers.delay(2500);
+    try {
+      await WhatsNewModal.isVisible();
+      await WhatsNewModal.tapGotItButton();
     } catch {
       //
     }
@@ -107,11 +110,7 @@ describe('Adding Contract Nickname', () => {
     await NetworkEducationModal.isNotVisible();
   });
   it('should go to the Privacy and settings view', async () => {
-    await WalletView.tapDrawerButton(); // tapping burger menu
-
-    await DrawerView.isVisible();
-    await DrawerView.tapSettings();
-
+    await TabBarComponent.tapSettings();
     await SettingsView.tapSecurityAndPrivacy();
 
     await SecurityAndPrivacy.scrollToTurnOnRememberMe();
@@ -172,11 +171,7 @@ describe('Adding Contract Nickname', () => {
   it('should verify contract does not appear in contacts view', async () => {
     // Check that we are on the wallet screen
     await WalletView.isVisible();
-    await WalletView.tapDrawerButton();
-
-    await DrawerView.isVisible();
-    await DrawerView.tapSettings();
-
+    await TabBarComponent.tapSettings();
     await SettingsView.tapContacts();
 
     await ContactsView.isVisible();
@@ -188,12 +183,10 @@ describe('Adding Contract Nickname', () => {
     await AddContactView.tapBackButton();
     await SettingsView.tapCloseButton();
 
-    await WalletView.tapDrawerButton();
-
-    await DrawerView.isVisible();
-    await DrawerView.tapSendButton();
+    await TabBarComponent.tapActions();
+    await WalletActionsModal.tapSendButton();
     // Make sure view with my accounts visible
-    await SendView.isTransferBetweenMyAccountsButtonVisible();
+    await SendView.isMyAccountsVisisble();
   });
 
   it('should verify the contract nickname does not appear in send flow', async () => {
@@ -211,13 +204,10 @@ describe('Adding Contract Nickname', () => {
   });
 
   it('should go to the send view again', async () => {
-    // Open Drawer
-    await WalletView.tapDrawerButton();
-
-    await DrawerView.isVisible();
-    await DrawerView.tapSendButton();
+    await TabBarComponent.tapActions();
+    await WalletActionsModal.tapSendButton();
     // Make sure view with my accounts visible
-    await SendView.isTransferBetweenMyAccountsButtonVisible();
+    await SendView.isMyAccountsVisisble();
   });
 
   it('should verify the contract nickname does not appear in recents', async () => {

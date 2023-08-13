@@ -28,7 +28,7 @@ import {
   ToastVariants,
 } from '../../../component-library/components/Toast';
 import { ToastOptions } from '../../../component-library/components/Toast/Toast.types';
-import { trackEvent } from '../../../util/analyticsV2';
+import AnalyticsV2 from '../../../util/analyticsV2';
 import { MetaMetricsEvents } from '../../../core/Analytics';
 import { useAccounts, Account } from '../../hooks/useAccounts';
 import getAccountNameWithENS from '../../../util/accounts';
@@ -37,6 +37,11 @@ import { getUrlObj, prefixUrlWithProtocol } from '../../../util/browser';
 import { getActiveTabUrl } from '../../../util/transactions';
 import { strings } from '../../../../locales/i18n';
 import { AvatarAccountType } from '../../../component-library/components/Avatars/Avatar/variants/AvatarAccount';
+import { selectAccountsLength } from '../../../selectors/accountTrackerController';
+import {
+  selectFrequentRpcList,
+  selectIdentities,
+} from '../../../selectors/preferencesController';
 
 // Internal dependencies.
 import {
@@ -61,17 +66,10 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
       : AvatarAccountType.JazzIcon,
   );
 
-  const accountsLength = useSelector(
-    (state: any) =>
-      Object.keys(
-        state.engine.backgroundState.AccountTrackerController.accounts || {},
-      ).length,
-  );
+  const accountsLength = useSelector(selectAccountsLength);
 
   const nonTestnetNetworks = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.PreferencesController.frequentRpcList
-        .length + 1,
+    (state: any) => selectFrequentRpcList(state).length + 1,
   );
 
   const origin: string = useSelector(getActiveTabUrl, isEqual);
@@ -112,10 +110,7 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
   });
   const previousPermittedAccounts = useRef<string[]>();
   const previousIdentitiesListSize = useRef<number>();
-  const identitiesMap = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.PreferencesController.identities,
-  );
+  const identitiesMap = useSelector(selectIdentities);
   const activeAddress: string = permittedAccountsByHostname[0];
 
   const [userIntent, setUserIntent] = useState(USER_INTENT.None);
@@ -136,7 +131,7 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
       hideSheet();
       toastRef?.current?.showToast({
         variant: ToastVariants.Plain,
-        labelOptions: [{ label: strings('toast.revoked_all') }],
+        labelOptions: [{ label: strings('toast.disconnected_all') }],
       });
       previousPermittedAccounts.current = permittedAccountsByHostname.length;
     }
@@ -181,8 +176,11 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
       try {
         setIsLoading(true);
         await KeyringController.addNewAccount();
-        trackEvent(MetaMetricsEvents.ACCOUNTS_ADDED_NEW_ACCOUNT, {});
-        trackEvent(MetaMetricsEvents.SWITCHED_ACCOUNT, {
+        AnalyticsV2.trackEvent(
+          MetaMetricsEvents.ACCOUNTS_ADDED_NEW_ACCOUNT,
+          {},
+        );
+        AnalyticsV2.trackEvent(MetaMetricsEvents.SWITCHED_ACCOUNT, {
           source: metricsSource,
           number_of_accounts: accounts?.length,
         });
@@ -234,7 +232,7 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
       const totalAccounts = accountsLength;
       // TODO: confirm this value is the newly added accounts or total connected accounts
       const connectedAccounts = connectedAccountLength;
-      trackEvent(MetaMetricsEvents.ADD_ACCOUNT_DAPP_PERMISSIONS, {
+      AnalyticsV2.trackEvent(MetaMetricsEvents.ADD_ACCOUNT_DAPP_PERMISSIONS, {
         number_of_accounts: totalAccounts,
         number_of_accounts_connected: connectedAccounts,
         number_of_networks: nonTestnetNetworks,
@@ -264,7 +262,7 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
         case USER_INTENT.Confirm: {
           handleConnect();
           hideSheet(() => {
-            trackEvent(MetaMetricsEvents.SWITCHED_ACCOUNT, {
+            AnalyticsV2.trackEvent(MetaMetricsEvents.SWITCHED_ACCOUNT, {
               source: metricsSource,
               number_of_accounts: accounts?.length,
             });
@@ -283,14 +281,17 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
         case USER_INTENT.Import: {
           navigation.navigate('ImportPrivateKeyView');
           // Is this where we want to track importing an account or within ImportPrivateKeyView screen?
-          trackEvent(MetaMetricsEvents.ACCOUNTS_IMPORTED_NEW_ACCOUNT, {});
+          AnalyticsV2.trackEvent(
+            MetaMetricsEvents.ACCOUNTS_IMPORTED_NEW_ACCOUNT,
+            {},
+          );
 
           break;
         }
         case USER_INTENT.ConnectHW: {
           navigation.navigate('ConnectQRHardwareFlow');
           // Is this where we want to track connecting a hardware wallet or within ConnectQRHardwareFlow screen?
-          trackEvent(MetaMetricsEvents.CONNECT_HARDWARE_WALLET, {});
+          AnalyticsV2.trackEvent(MetaMetricsEvents.CONNECT_HARDWARE_WALLET, {});
 
           break;
         }
@@ -356,6 +357,7 @@ const AccountPermissions = (props: AccountPermissionsProps) => {
         urlWithProtocol={urlWithProtocol}
         secureIcon={secureIcon}
         isAutoScrollEnabled={false}
+        onBack={() => setPermissionsScreen(AccountPermissionsScreens.Connected)}
       />
     ),
     [

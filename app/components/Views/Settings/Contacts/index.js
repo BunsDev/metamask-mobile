@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { SafeAreaView, StyleSheet, Platform } from 'react-native';
+import { Platform, SafeAreaView, StyleSheet } from 'react-native';
 import PropTypes from 'prop-types';
 import { strings } from '../../../../../locales/i18n';
 import { getNavigationOptionsTitle } from '../../../UI/Navbar';
@@ -8,16 +8,21 @@ import AddressList from '../../SendFlow/AddressList';
 import StyledButton from '../../../UI/StyledButton';
 import Engine from '../../../../core/Engine';
 import ActionSheet from 'react-native-actionsheet';
-import { ThemeContext, mockTheme } from '../../../../util/theme';
+import { mockTheme, ThemeContext } from '../../../../util/theme';
 import { selectNetwork } from '../../../../selectors/networkController';
 
 import generateTestId from '../../../../../wdio/utils/generateTestId';
-import { CONTACTS_CONTAINER_ID } from '../../../../../wdio/screen-objects/testIDs/Screens/Contacts.testids';
+import {
+  CONTACT_ADD_BUTTON,
+  CONTACTS_CONTAINER_ID,
+} from '../../../../../wdio/screen-objects/testIDs/Screens/Contacts.testids';
+
 const createStyles = (colors) =>
   StyleSheet.create({
     wrapper: {
       backgroundColor: colors.background.default,
       flex: 1,
+      marginTop: 16,
     },
     addContact: {
       marginHorizontal: 24,
@@ -38,8 +43,8 @@ class Contacts extends PureComponent {
      */
     addressBook: PropTypes.object,
     /**
-    /* navigation object required to push new views
-    */
+     /* navigation object required to push new views
+     */
     navigation: PropTypes.object,
     /**
      * Network id
@@ -140,7 +145,7 @@ class Contacts extends PureComponent {
           type={'confirm'}
           containerStyle={styles.addContact}
           onPress={this.goToAddContact}
-          testID={'add-contact-button'}
+          testID={CONTACT_ADD_BUTTON}
         >
           {strings('address_book.add_contact')}
         </StyledButton>

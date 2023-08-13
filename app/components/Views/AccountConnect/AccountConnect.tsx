@@ -19,7 +19,7 @@ import SheetBottom, {
 import UntypedEngine from '../../../core/Engine';
 import { isDefaultAccountName } from '../../../util/ENSUtils';
 import Logger from '../../../util/Logger';
-import { trackEvent } from '../../../util/analyticsV2';
+import AnalyticsV2 from '../../../util/analyticsV2';
 import { MetaMetricsEvents } from '../../../core/Analytics';
 import { SelectedAccount } from '../../../components/UI/AccountSelectorList/AccountSelectorList.types';
 import {
@@ -36,6 +36,11 @@ import { strings } from '../../../../locales/i18n';
 import { AvatarAccountType } from '../../../component-library/components/Avatars/Avatar/variants/AvatarAccount';
 import { safeToChecksumAddress } from '../../../util/address';
 import USER_INTENT from '../../../constants/permissions';
+import { selectAccountsLength } from '../../../selectors/accountTrackerController';
+import {
+  selectIdentities,
+  selectSelectedAddress,
+} from '../../../selectors/preferencesController';
 
 // Internal dependencies.
 import {
@@ -51,10 +56,7 @@ const AccountConnect = (props: AccountConnectProps) => {
   const { hostInfo, permissionRequestId } = props.route.params;
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation();
-  const selectedWalletAddress = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.PreferencesController.selectedAddress,
-  );
+  const selectedWalletAddress = useSelector(selectSelectedAddress);
   const [selectedAddresses, setSelectedAddresses] = useState<string[]>([
     selectedWalletAddress,
   ]);
@@ -66,10 +68,7 @@ const AccountConnect = (props: AccountConnectProps) => {
     isLoading,
   });
   const previousIdentitiesListSize = useRef<number>();
-  const identitiesMap = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.PreferencesController.identities,
-  );
+  const identitiesMap = useSelector(selectIdentities);
 
   const [userIntent, setUserIntent] = useState(USER_INTENT.None);
 
@@ -91,12 +90,7 @@ const AccountConnect = (props: AccountConnectProps) => {
     [origin],
   );
 
-  const accountsLength = useSelector(
-    (state: any) =>
-      Object.keys(
-        state.engine.backgroundState.AccountTrackerController.accounts || {},
-      ).length,
-  );
+  const accountsLength = useSelector(selectAccountsLength);
 
   /**
    * Get image url from favicon api.
@@ -123,7 +117,7 @@ const AccountConnect = (props: AccountConnectProps) => {
     (requestId) => {
       Engine.context.PermissionController.rejectPermissionsRequest(requestId);
 
-      trackEvent(MetaMetricsEvents.CONNECT_REQUEST_CANCELLED, {
+      AnalyticsV2.trackEvent(MetaMetricsEvents.CONNECT_REQUEST_CANCELLED, {
         number_of_accounts: accountsLength,
         source: 'permission system',
       });
@@ -156,7 +150,7 @@ const AccountConnect = (props: AccountConnectProps) => {
       await Engine.context.PermissionController.acceptPermissionsRequest(
         request,
       );
-      trackEvent(MetaMetricsEvents.CONNECT_REQUEST_COMPLETED, {
+      AnalyticsV2.trackEvent(MetaMetricsEvents.CONNECT_REQUEST_COMPLETED, {
         number_of_accounts: accountsLength,
         number_of_accounts_connected: connectedAccountLength,
         source: 'in-app browser',
@@ -210,7 +204,10 @@ const AccountConnect = (props: AccountConnectProps) => {
           addedAccountAddress,
         ) as string;
         !isMultiSelect && setSelectedAddresses([checksummedAddress]);
-        trackEvent(MetaMetricsEvents.ACCOUNTS_ADDED_NEW_ACCOUNT, {});
+        AnalyticsV2.trackEvent(
+          MetaMetricsEvents.ACCOUNTS_ADDED_NEW_ACCOUNT,
+          {},
+        );
       } catch (e: any) {
         Logger.error(e, 'error while trying to add a new account');
       } finally {
@@ -257,13 +254,16 @@ const AccountConnect = (props: AccountConnectProps) => {
         case USER_INTENT.Import: {
           navigation.navigate('ImportPrivateKeyView');
           // TODO: Confirm if this is where we want to track importing an account or within ImportPrivateKeyView screen.
-          trackEvent(MetaMetricsEvents.ACCOUNTS_IMPORTED_NEW_ACCOUNT, {});
+          AnalyticsV2.trackEvent(
+            MetaMetricsEvents.ACCOUNTS_IMPORTED_NEW_ACCOUNT,
+            {},
+          );
           break;
         }
         case USER_INTENT.ConnectHW: {
           navigation.navigate('ConnectQRHardwareFlow');
           // TODO: Confirm if this is where we want to track connecting a hardware wallet or within ConnectQRHardwareFlow screen.
-          trackEvent(MetaMetricsEvents.CONNECT_HARDWARE_WALLET, {});
+          AnalyticsV2.trackEvent(MetaMetricsEvents.CONNECT_HARDWARE_WALLET, {});
 
           break;
         }
@@ -366,6 +366,7 @@ const AccountConnect = (props: AccountConnectProps) => {
         secureIcon={secureIcon}
         urlWithProtocol={urlWithProtocol}
         onUserAction={setUserIntent}
+        onBack={() => setScreen(AccountConnectScreens.SingleConnect)}
       />
     ),
     [

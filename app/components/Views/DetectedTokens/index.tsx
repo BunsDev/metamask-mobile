@@ -1,8 +1,6 @@
 import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Text, InteractionManager } from 'react-native';
-import ReusableModal, { ReusableModalRef } from '../../UI/ReusableModal';
 import { useSelector } from 'react-redux';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MetaMetricsEvents } from '../../../core/Analytics';
 import { fontStyles } from '../../../styles/common';
 import StyledButton from '../../UI/StyledButton';
@@ -14,18 +12,23 @@ import NotificationManager from '../../../core/NotificationManager';
 import { strings } from '../../../../locales/i18n';
 import Logger from '../../../util/Logger';
 import { useTheme } from '../../../util/theme';
-import { trackEvent } from '../../../util/analyticsV2';
+import AnalyticsV2 from '../../../util/analyticsV2';
+
 import { getDecimalChainId } from '../../../util/networks';
 import { FlatList } from 'react-native-gesture-handler';
 import { createNavigationDetails } from '../../../util/navigation/navUtils';
 import Routes from '../../../constants/navigation/Routes';
+import SheetBottom, {
+  SheetBottomRef,
+} from '../../../component-library/components/Sheet/SheetBottom';
+import { selectDetectedTokens } from '../../../selectors/tokensController';
+import { selectChainId } from '../../../selectors/networkController';
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
     fill: {
       flex: 1,
     },
-    screen: { justifyContent: 'flex-end' },
     sheet: {
       backgroundColor: colors.background.default,
       borderTopLeftRadius: 20,
@@ -47,7 +50,7 @@ const createStyles = (colors: any) =>
       paddingVertical: 16,
       color: colors.text.default,
     },
-    tokenList: { flex: 1, paddingHorizontal: 16 },
+    tokenList: { paddingHorizontal: 16 },
     buttonsContainer: {
       padding: 16,
       flexDirection: 'row',
@@ -62,14 +65,10 @@ interface IgnoredTokensByAddress {
 }
 
 const DetectedTokens = () => {
-  const safeAreaInsets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const modalRef = useRef<ReusableModalRef>(null);
-  const detectedTokens = useSelector<any, TokenType[]>(
-    (state) =>
-      state.engine.backgroundState.TokensController
-        .detectedTokens as TokenType[],
-  );
+  const sheetRef = useRef<SheetBottomRef>(null);
+  const detectedTokens = useSelector(selectDetectedTokens);
+  const chainId = useSelector(selectChainId);
   const [ignoredTokens, setIgnoredTokens] = useState<IgnoredTokensByAddress>(
     {},
   );
@@ -116,9 +115,7 @@ const DetectedTokens = () => {
         errorMsg = 'DetectedTokens: Failed to import detected tokens!';
       }
 
-      modalRef.current?.dismissModal(async () => {
-        const { NetworkController } = Engine.context as any;
-
+      sheetRef.current?.hide(async () => {
         try {
           tokensToIgnore.length > 0 &&
             (await TokensController.ignoreTokens(tokensToIgnore));
@@ -126,12 +123,10 @@ const DetectedTokens = () => {
             await TokensController.addTokens(tokensToImport);
             InteractionManager.runAfterInteractions(() =>
               tokensToImport.forEach(({ address, symbol }) =>
-                trackEvent(MetaMetricsEvents.TOKEN_ADDED, {
+                AnalyticsV2.trackEvent(MetaMetricsEvents.TOKEN_ADDED, {
                   token_address: address,
                   token_symbol: symbol,
-                  chain_id: getDecimalChainId(
-                    NetworkController?.state?.providerConfig?.chainId,
-                  ),
+                  chain_id: getDecimalChainId(chainId),
                   source: 'detected',
                 }),
               ),
@@ -148,25 +143,21 @@ const DetectedTokens = () => {
         }
       });
     },
-    [detectedTokens, ignoredTokens],
+    [chainId, detectedTokens, ignoredTokens],
   );
 
   const triggerIgnoreAllTokens = () => {
-    const { NetworkController } = Engine.context as any;
-
     navigation.navigate('DetectedTokensConfirmation', {
       onConfirm: () => dismissModalAndTriggerAction(true),
       isHidingAll: true,
     });
     InteractionManager.runAfterInteractions(() =>
-      trackEvent(MetaMetricsEvents.TOKENS_HIDDEN, {
+      AnalyticsV2.trackEvent(MetaMetricsEvents.TOKENS_HIDDEN, {
         location: 'token_detection',
         token_standard: 'ERC20',
         asset_type: 'token',
         tokens: detectedTokensForAnalytics,
-        chain_id: getDecimalChainId(
-          NetworkController?.state?.providerConfig?.chainId,
-        ),
+        chain_id: getDecimalChainId(chainId),
       }),
     );
   };
@@ -255,32 +246,26 @@ const DetectedTokens = () => {
   };
 
   const trackCancelWithoutAction = (hasPendingAction: boolean) => {
-    const { NetworkController } = Engine.context as any;
     if (hasPendingAction) {
       return;
     }
-    trackEvent(MetaMetricsEvents.TOKEN_IMPORT_CANCELED, {
+    AnalyticsV2.trackEvent(MetaMetricsEvents.TOKEN_IMPORT_CANCELED, {
       source: 'detected',
       tokens: detectedTokensForAnalytics,
-      chain_id: getDecimalChainId(
-        NetworkController?.state?.providerConfig?.chainId,
-      ),
+      chain_id: getDecimalChainId(chainId),
     });
   };
 
   return (
-    <ReusableModal
-      ref={modalRef}
-      style={styles.screen}
-      onDismiss={trackCancelWithoutAction}
+    <SheetBottom
+      ref={sheetRef}
+      reservedMinOverlayHeight={250}
+      onDismissed={trackCancelWithoutAction}
     >
-      <View style={[styles.sheet, { paddingBottom: safeAreaInsets.bottom }]}>
-        <View style={styles.notch} />
-        {renderHeader()}
-        {renderDetectedTokens()}
-        {renderButtons()}
-      </View>
-    </ReusableModal>
+      {renderHeader()}
+      {renderDetectedTokens()}
+      {renderButtons()}
+    </SheetBottom>
   );
 };
 

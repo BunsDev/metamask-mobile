@@ -12,7 +12,8 @@ import AssetSearch from '../AssetSearch';
 import AssetList from '../AssetList';
 import Engine from '../../../core/Engine';
 import { MetaMetricsEvents } from '../../../core/Analytics';
-import { trackEvent } from '../../../util/analyticsV2';
+import AnalyticsV2 from '../../../util/analyticsV2';
+
 import Alert, { AlertType } from '../../Base/Alert';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { useSelector } from 'react-redux';
@@ -20,6 +21,7 @@ import { FORMATTED_NETWORK_NAMES } from '../../../constants/on-ramp';
 import NotificationManager from '../../../core/NotificationManager';
 import { useTheme } from '../../../util/theme';
 import { selectChainId } from '../../../selectors/networkController';
+import { selectUseTokenDetection } from '../../../selectors/preferencesController';
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
@@ -55,14 +57,11 @@ const SearchTokenAutocomplete = ({ navigation }: Props) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAsset, setSelectedAsset] = useState({});
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const { address, symbol, decimals, image } = selectedAsset as any;
+  const { address, symbol, decimals, iconUrl, name } = selectedAsset as any;
   const { colors } = useTheme();
   const styles = createStyles(colors);
 
-  const isTokenDetectionEnabled = useSelector(
-    (state: any) =>
-      state.engine.backgroundState.PreferencesController.useTokenDetection,
-  );
+  const isTokenDetectionEnabled = useSelector(selectUseTokenDetection);
   const chainId = useSelector(selectChainId);
 
   const setFocusState = useCallback(
@@ -107,9 +106,9 @@ const SearchTokenAutocomplete = ({ navigation }: Props) => {
 
   const addToken = useCallback(async () => {
     const { TokensController } = Engine.context as any;
-    await TokensController.addToken(address, symbol, decimals, image);
+    await TokensController.addToken(address, symbol, decimals, iconUrl, name);
 
-    trackEvent(MetaMetricsEvents.TOKEN_ADDED, getAnalyticsParams());
+    AnalyticsV2.trackEvent(MetaMetricsEvents.TOKEN_ADDED, getAnalyticsParams());
 
     // Clear state before closing
     setSearchResults([]);
@@ -131,12 +130,13 @@ const SearchTokenAutocomplete = ({ navigation }: Props) => {
     address,
     symbol,
     decimals,
-    image,
+    iconUrl,
     setSearchResults,
     setSearchQuery,
     setSelectedAsset,
     navigation,
     getAnalyticsParams,
+    name,
   ]);
 
   const renderTokenDetectionBanner = useCallback(() => {
@@ -166,12 +166,9 @@ const SearchTokenAutocomplete = ({ navigation }: Props) => {
             suppressHighlighting
             onPress={() => {
               navigation.navigate('SettingsView', {
-                screen: 'SettingsFlow',
+                screen: 'AdvancedSettings',
                 params: {
-                  screen: 'AdvancedSettings',
-                  params: {
-                    scrollToBottom: true,
-                  },
+                  scrollToBottom: true,
                 },
               });
             }}

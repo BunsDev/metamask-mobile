@@ -30,6 +30,7 @@ import onUrlSubmit, {
   prefixUrlWithProtocol,
   isTLD,
   protocolAllowList,
+  trustedProtocolToDeeplink,
   getAlertMessage,
   allowLinkOpen,
   getUrlObj,
@@ -49,14 +50,9 @@ import { addToHistory, addToWhitelist } from '../../../actions/browser';
 import Device from '../../../util/device';
 import AppConstants from '../../../core/AppConstants';
 import SearchApi from 'react-native-search-api';
+import Analytics from '../../../core/Analytics/Analytics';
 import { MetaMetricsEvents } from '../../../core/Analytics';
-import {
-  trackEvent,
-  trackLegacyEvent,
-  trackErrorAsAnalytics,
-  getMetaMetricsId,
-  checkEnabled,
-} from '../../../util/analyticsV2';
+import AnalyticsV2, { trackErrorAsAnalytics } from '../../../util/analyticsV2';
 import setOnboardingWizardStep from '../../../actions/wizard';
 import OnboardingWizard from '../../UI/OnboardingWizard';
 import DrawerStatusTracker from '../../../core/DrawerStatusTracker';
@@ -88,6 +84,10 @@ import {
   RELOAD_OPTION,
   SHARE_OPTION,
 } from '../../../../wdio/screen-objects/testIDs/BrowserScreen/OptionMenu.testIds';
+import {
+  selectIpfsGateway,
+  selectSelectedAddress,
+} from '../../../selectors/preferencesController';
 
 const { HOMEPAGE_URL, NOTIFICATION_NAMES } = AppConstants;
 const HOMEPAGE_HOST = new URL(HOMEPAGE_URL)?.hostname;
@@ -362,7 +362,7 @@ export const BrowserTab = (props) => {
     dismissTextSelectionIfNeeded();
     setShowOptions(!showOptions);
     InteractionManager.runAfterInteractions(() => {
-      trackLegacyEvent(MetaMetricsEvents.DAPP_BROWSER_OPTIONS);
+      Analytics.trackEvent(MetaMetricsEvents.DAPP_BROWSER_OPTIONS);
     });
   }, [dismissTextSelectionIfNeeded, showOptions]);
 
@@ -505,7 +505,6 @@ export const BrowserTab = (props) => {
       const prefixedUrl = prefixUrlWithProtocol(url);
       const { hostname, query, pathname } = new URL(prefixedUrl);
       let urlToGo = prefixedUrl;
-      urlToGo = sanitizeUrlInput(urlToGo);
       const isEnsUrl = isENSUrl(url);
       const { current } = webviewRef;
       if (isEnsUrl) {
@@ -528,7 +527,9 @@ export const BrowserTab = (props) => {
         } else {
           current &&
             current.injectJavaScript(
-              `(function(){window.location.href = '${urlToGo}' })()`,
+              `(function(){window.location.href = '${sanitizeUrlInput(
+                urlToGo,
+              )}' })()`,
             );
         }
 
@@ -642,8 +643,8 @@ export const BrowserTab = (props) => {
    */
   const injectHomePageScripts = async (bookmarks) => {
     const { current } = webviewRef;
-    const analyticsEnabled = checkEnabled();
-    const disctinctId = getMetaMetricsId();
+    const analyticsEnabled = Analytics.checkEnabled();
+    const disctinctId = await Analytics.getDistinctId();
     const homepageScripts = `
 			window.__mmFavorites = ${JSON.stringify(bookmarks || props.bookmarks)};
 			window.__mmSearchEngine = "${props.searchEngine}";
@@ -771,7 +772,7 @@ export const BrowserTab = (props) => {
   );
 
   const trackEventSearchUsed = useCallback(() => {
-    trackEvent(MetaMetricsEvents.BROWSER_SEARCH_USED, {
+    AnalyticsV2.trackEvent(MetaMetricsEvents.BROWSER_SEARCH_USED, {
       option_chosen: 'Search on URL',
       number_of_tabs: undefined,
     });
@@ -782,15 +783,31 @@ export const BrowserTab = (props) => {
    *  Return `true` to continue loading the request and `false` to stop loading.
    */
   const onShouldStartLoadWithRequest = ({ url }) => {
+    const { hostname } = new URL(url);
+
     // Stops normal loading when it's ens, instead call go to be properly set up
     if (isENSUrl(url)) {
       go(url.replace(/^http:\/\//, 'https://'));
       return false;
     }
 
+    // Cancel loading the page if we detect its a phishing page
+    if (!isAllowedUrl(hostname)) {
+      handleNotAllowedUrl(url);
+      return false;
+    }
+
     // Continue request loading it the protocol is whitelisted
     const { protocol } = new URL(url);
     if (protocolAllowList.includes(protocol)) return true;
+
+    // If it is a trusted deeplink protocol, do not show the
+    // warning alert. Allow the OS to deeplink the URL
+    // and stop the webview from loading it.
+    if (trustedProtocolToDeeplink.includes(protocol)) {
+      allowLinkOpen(url);
+      return false;
+    }
 
     const alertMsg = getAlertMessage(protocol, strings);
 
@@ -875,7 +892,7 @@ export const BrowserTab = (props) => {
     toggleOptionsIfNeeded();
     if (url.current === HOMEPAGE_URL) return reload();
     await go(HOMEPAGE_URL);
-    trackLegacyEvent(MetaMetricsEvents.DAPP_HOME);
+    Analytics.trackEvent(MetaMetricsEvents.DAPP_HOME);
   };
 
   /**
@@ -979,10 +996,6 @@ export const BrowserTab = (props) => {
       changeAddressBar({ ...nativeEvent });
     }
 
-    if (!isAllowedUrl(hostname)) {
-      return handleNotAllowedUrl(nativeEvent.url);
-    }
-
     setError(false);
 
     changeUrl(nativeEvent);
@@ -996,6 +1009,13 @@ export const BrowserTab = (props) => {
     // Reset the previous bridges
     backgroundBridges.current.length &&
       backgroundBridges.current.forEach((bridge) => bridge.onDisconnect());
+
+    // Cancel loading the page if we detect its a phishing page
+    if (!isAllowedUrl(hostname)) {
+      handleNotAllowedUrl(url);
+      return false;
+    }
+
     backgroundBridges.current = [];
     const origin = new URL(nativeEvent.url).origin;
     initializeBackgroundBridge(origin, true);
@@ -1016,9 +1036,12 @@ export const BrowserTab = (props) => {
           error,
           setAccountsPermissionsVisible: () => {
             // Track Event: "Opened Acount Switcher"
-            trackEvent(MetaMetricsEvents.BROWSER_OPEN_ACCOUNT_SWITCH, {
-              number_of_accounts: accounts?.length,
-            });
+            AnalyticsV2.trackEvent(
+              MetaMetricsEvents.BROWSER_OPEN_ACCOUNT_SWITCH,
+              {
+                number_of_accounts: accounts?.length,
+              },
+            );
             props.navigation.navigate(Routes.MODAL.ROOT_MODAL_FLOW, {
               screen: Routes.SHEET.ACCOUNT_PERMISSIONS,
               params: {
@@ -1081,7 +1104,7 @@ export const BrowserTab = (props) => {
    * Track new tab event
    */
   const trackNewTabEvent = () => {
-    trackEvent(MetaMetricsEvents.BROWSER_NEW_TAB, {
+    AnalyticsV2.trackEvent(MetaMetricsEvents.BROWSER_NEW_TAB, {
       option_chosen: 'Browser Options',
       number_of_tabs: undefined,
     });
@@ -1091,9 +1114,8 @@ export const BrowserTab = (props) => {
    * Track add site to favorites event
    */
   const trackAddToFavoritesEvent = () => {
-    trackEvent(MetaMetricsEvents.BROWSER_ADD_FAVORITES, {
+    AnalyticsV2.trackEvent(MetaMetricsEvents.BROWSER_ADD_FAVORITES, {
       dapp_name: title.current || '',
-      dapp_url: url.current || '',
     });
   };
 
@@ -1101,14 +1123,14 @@ export const BrowserTab = (props) => {
    * Track share site event
    */
   const trackShareEvent = () => {
-    trackEvent(MetaMetricsEvents.BROWSER_SHARE_SITE);
+    AnalyticsV2.trackEvent(MetaMetricsEvents.BROWSER_SHARE_SITE);
   };
 
   /**
    * Track reload site event
    */
   const trackReloadEvent = () => {
-    trackEvent(MetaMetricsEvents.BROWSER_RELOAD);
+    AnalyticsV2.trackEvent(MetaMetricsEvents.BROWSER_RELOAD);
   };
 
   /**
@@ -1145,7 +1167,7 @@ export const BrowserTab = (props) => {
       },
     });
     trackAddToFavoritesEvent();
-    trackEvent(MetaMetricsEvents.DAPP_ADD_TO_FAVORITE);
+    Analytics.trackEvent(MetaMetricsEvents.DAPP_ADD_TO_FAVORITE);
   };
 
   /**
@@ -1172,7 +1194,7 @@ export const BrowserTab = (props) => {
         error,
       ),
     );
-    trackEvent(MetaMetricsEvents.DAPP_OPEN_IN_BROWSER);
+    Analytics.trackEvent(MetaMetricsEvents.DAPP_OPEN_IN_BROWSER);
   };
 
   /**
@@ -1360,7 +1382,7 @@ export const BrowserTab = (props) => {
    * Main render
    */
   return (
-    <ErrorBoundary view="BrowserTab">
+    <ErrorBoundary navigation={props.navigation} view="BrowserTab">
       <View
         style={[styles.wrapper, !isTabActive && styles.hide]}
         {...(Device.isAndroid() ? { collapsable: false } : {})}
@@ -1499,9 +1521,8 @@ BrowserTab.defaultProps = {
 
 const mapStateToProps = (state) => ({
   bookmarks: state.bookmarks,
-  ipfsGateway: state.engine.backgroundState.PreferencesController.ipfsGateway,
-  selectedAddress:
-    state.engine.backgroundState.PreferencesController.selectedAddress?.toLowerCase(),
+  ipfsGateway: selectIpfsGateway(state),
+  selectedAddress: selectSelectedAddress(state)?.toLowerCase(),
   searchEngine: state.settings.searchEngine,
   whitelist: state.browser.whitelist,
   wizardStep: state.wizard.step,

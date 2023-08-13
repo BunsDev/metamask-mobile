@@ -19,7 +19,7 @@ import { isMainnetByChainId } from '../../../util/networks';
 import BigNumber from 'bignumber.js';
 import FadeAnimationView from '../FadeAnimationView';
 import { MetaMetricsEvents } from '../../../core/Analytics';
-import { trackEvent } from '../../../util/analyticsV2';
+import AnalyticsV2 from '../../../util/analyticsV2';
 
 import TimeEstimateInfoModal from '../TimeEstimateInfoModal';
 import useModalHandler from '../../Base/hooks/useModalHandler';
@@ -30,7 +30,7 @@ import createStyles from './styles';
 import { EditGasFee1559UpdateProps, RenderInputProps } from './types';
 import generateTestId from '../../../../wdio/utils/generateTestId';
 import {
-  EDIT_PRIOTIRY_SCREEN_TEST_ID,
+  EDIT_PRIORITY_SCREEN_TEST_ID,
   MAX_PRIORITY_FEE_INPUT_TEST_ID,
 } from '../../../../wdio/screen-objects/testIDs/Screens/EditGasFeeScreen.testids.js';
 
@@ -129,7 +129,7 @@ const EditGasFee1559Update = ({
 
   const toggleAdvancedOptions = useCallback(() => {
     if (!showAdvancedOptions) {
-      trackEvent(
+      AnalyticsV2.trackEvent(
         MetaMetricsEvents.GAS_ADVANCED_OPTIONS_CLICKED,
         getAnalyticsParams(),
       );
@@ -149,7 +149,10 @@ const EditGasFee1559Update = ({
   );
 
   const save = useCallback(() => {
-    trackEvent(MetaMetricsEvents.GAS_FEE_CHANGED, getAnalyticsParams());
+    AnalyticsV2.trackEvent(
+      MetaMetricsEvents.GAS_FEE_CHANGED,
+      getAnalyticsParams(),
+    );
 
     const newGasPriceObject = {
       suggestedMaxFeePerGas: gasObject?.suggestedMaxFeePerGas,
@@ -586,7 +589,7 @@ const EditGasFee1559Update = ({
     <View style={styles.root}>
       <ScrollView
         style={styles.wrapper}
-        {...generateTestId(Platform, EDIT_PRIOTIRY_SCREEN_TEST_ID)}
+        {...generateTestId(Platform, EDIT_PRIORITY_SCREEN_TEST_ID)}
       >
         <TouchableWithoutFeedback>
           <View>
@@ -666,7 +669,10 @@ const EditGasFee1559Update = ({
               </Text>
               <View style={styles.labelTextContainer}>
                 <Text
-                  green={timeEstimateColor === 'green'}
+                  green={
+                    timeEstimateColor === 'green' ||
+                    timeEstimateId === AppConstants.GAS_TIMES.VERY_LIKELY
+                  }
                   red={timeEstimateColor === 'red'}
                   bold
                 >

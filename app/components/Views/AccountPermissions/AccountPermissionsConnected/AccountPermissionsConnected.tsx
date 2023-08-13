@@ -1,7 +1,9 @@
 // Third party dependencies.
 import React, { useCallback, useContext, useMemo } from 'react';
-import { View } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
+import { View, Platform } from 'react-native';
+import { useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
+import { ProviderConfig } from '@metamask/network-controller';
 
 // External dependencies.
 import SheetActions from '../../../../component-library/components-temp/SheetActions';
@@ -10,11 +12,10 @@ import { strings } from '../../../../../locales/i18n';
 import TagUrl from '../../../../component-library/components/Tags/TagUrl';
 import PickerNetwork from '../../../../component-library/components/Pickers/PickerNetwork';
 import {
-  getNetworkNameFromProvider,
+  getNetworkNameFromProviderConfig,
   getNetworkImageSource,
 } from '../../../../util/networks';
 import AccountSelectorList from '../../../../components/UI/AccountSelectorList';
-import { toggleNetworkModal } from '../../../../actions/modals';
 import { AccountPermissionsScreens } from '../AccountPermissions.types';
 import { switchActiveAccounts } from '../../../../core/Permissions';
 import {
@@ -22,8 +23,15 @@ import {
   ToastVariants,
 } from '../../../../component-library/components/Toast';
 import getAccountNameWithENS from '../../../../util/accounts';
-import { trackEvent } from '../../../../util/analyticsV2';
+import AnalyticsV2 from '../../../../util/analyticsV2';
 import { MetaMetricsEvents } from '../../../../core/Analytics';
+import {
+  CONNECTED_ACCOUNTS_MODAL_CONTAINER,
+  CONNECTED_ACCOUNTS_MODAL_NETWORK_PICKER_ID,
+} from '../../../../../wdio/screen-objects/testIDs/Components/ConnectedAccountsModal.testIds';
+import generateTestId from '../../../../../wdio/utils/generateTestId';
+import Routes from '../../../../constants/navigation/Routes';
+import { selectProviderConfig } from '../../../../selectors/networkController';
 
 // Internal dependencies.
 import { AccountPermissionsConnectedProps } from './AccountPermissionsConnected.types';
@@ -43,18 +51,18 @@ const AccountPermissionsConnected = ({
   accountAvatarType,
   urlWithProtocol,
 }: AccountPermissionsConnectedProps) => {
-  const dispatch = useDispatch();
-  const networkController = useSelector(
-    (state: any) => state.engine.backgroundState.NetworkController,
-  );
+  const { navigate } = useNavigation();
+
+  const providerConfig: ProviderConfig = useSelector(selectProviderConfig);
+
   const networkName = useMemo(
-    () => getNetworkNameFromProvider(networkController.providerConfig),
-    [networkController.providerConfig],
+    () => getNetworkNameFromProviderConfig(providerConfig),
+    [providerConfig],
   );
   const networkImageSource = useMemo(() => {
-    const { type, chainId } = networkController.providerConfig;
+    const { type, chainId } = providerConfig;
     return getNetworkImageSource({ networkType: type, chainId });
-  }, [networkController.providerConfig]);
+  }, [providerConfig]);
 
   const activeAddress = selectedAddresses[0];
   const { toastRef } = useContext(ToastContext);
@@ -103,11 +111,14 @@ const AccountPermissionsConnected = ({
   );
 
   const switchNetwork = useCallback(() => {
-    dispatch(toggleNetworkModal(false));
-    trackEvent(MetaMetricsEvents.BROWSER_SWITCH_NETWORK, {
-      from_chain_id: networkController.network,
+    navigate(Routes.MODAL.ROOT_MODAL_FLOW, {
+      screen: Routes.SHEET.NETWORK_SELECTOR,
     });
-  }, [networkController.network, dispatch]);
+
+    AnalyticsV2.trackEvent(MetaMetricsEvents.NETWORK_SELECTOR_PRESSED, {
+      chain_id: providerConfig.chainId,
+    });
+  }, [providerConfig.chainId, navigate]);
 
   const renderSheetAction = useCallback(
     () => (
@@ -129,7 +140,10 @@ const AccountPermissionsConnected = ({
   return (
     <>
       <SheetHeader title={strings('accounts.connected_accounts_title')} />
-      <View style={styles.body}>
+      <View
+        style={styles.body}
+        {...generateTestId(Platform, CONNECTED_ACCOUNTS_MODAL_CONTAINER)}
+      >
         <TagUrl
           imageSource={favicon}
           label={urlWithProtocol}
@@ -144,6 +158,10 @@ const AccountPermissionsConnected = ({
           imageSource={networkImageSource}
           onPress={switchNetwork}
           style={styles.networkPicker}
+          {...generateTestId(
+            Platform,
+            CONNECTED_ACCOUNTS_MODAL_NETWORK_PICKER_ID,
+          )}
         />
       </View>
       <AccountSelectorList

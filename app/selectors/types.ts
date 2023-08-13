@@ -18,10 +18,7 @@ import { PreferencesState } from '@metamask/preferences-controller';
 import { PhishingState } from '@metamask/phishing-controller';
 import { TransactionState } from '@metamask/transaction-controller';
 import { GasFeeController } from '@metamask/gas-fee-controller';
-import {
-  PersonalMessageParams,
-  TypedMessageManager,
-} from '@metamask/message-manager';
+import { ApprovalControllerState } from '@metamask/approval-controller';
 
 export interface EngineState {
   engine: {
@@ -33,19 +30,18 @@ export interface EngineState {
       TokenListController: TokenListState;
       CurrencyRateController: CurrencyRateState;
       KeyringController: KeyringMemState;
-      PersonalMessageManager: PersonalMessageParams;
       NetworkController: NetworkState;
       PreferencesController: PreferencesState;
       PhishingController: PhishingState;
       TokenBalancesController: TokenBalancesState;
       TokenRatesController: TokenRatesState;
       TransactionController: TransactionState;
-      TypedMessageManager: TypedMessageManager;
       SwapsController: SwapsController;
       GasFeeController: GasFeeController;
       TokensController: TokensState;
       TokenDetectionController: TokenDetectionController;
       NftDetectionController: NftDetectionController;
+      ApprovalController: ApprovalControllerState;
     };
   };
 }

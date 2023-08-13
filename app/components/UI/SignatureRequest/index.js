@@ -1,21 +1,19 @@
 import React, { PureComponent } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import PropTypes from 'prop-types';
-import { connect } from 'react-redux';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { MetaMetricsEvents } from '../../../core/Analytics';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { fontStyles } from '../../../styles/common';
 import { getHost } from '../../../util/browser';
 import { strings } from '../../../../locales/i18n';
-
+import { connect } from 'react-redux';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import WebsiteIcon from '../WebsiteIcon';
 import ActionView from '../ActionView';
 import AccountInfoCard from '../AccountInfoCard';
-import TransactionHeader from '../TransactionHeader';
 import WarningMessage from '../../Views/SendFlow/WarningMessage';
 import Device from '../../../util/device';
+import Analytics from '../../../core/Analytics/Analytics';
+import { MetaMetricsEvents } from '../../../core/Analytics';
 import { ThemeContext, mockTheme } from '../../../util/theme';
-import { trackLegacyEvent } from '../../../util/analyticsV2';
 import withQRHardwareAwareness from '../QRHardware/withQRHardwareAwareness';
 import QRSigningDetails from '../QRHardware/QRSigningDetails';
 import { selectProviderType } from '../../../selectors/networkController';
@@ -118,7 +116,7 @@ class SignatureRequest extends PureComponent {
     /**
      * Callback triggered when this message signature is rejected
      */
-    onCancel: PropTypes.func,
+    onReject: PropTypes.func,
     /**
      * Callback triggered when this message signature is approved
      */
@@ -157,14 +155,15 @@ class SignatureRequest extends PureComponent {
     fromAddress: PropTypes.string,
     isSigningQRObject: PropTypes.bool,
     QRState: PropTypes.object,
+    testID: PropTypes.string,
   };
 
   /**
-   * Calls trackCancelSignature and onCancel callback
+   * Calls trackCancelSignature and onReject callback
    */
-  onCancel = () => {
-    this.props.onCancel();
-    trackLegacyEvent(
+  onReject = () => {
+    this.props.onReject();
+    Analytics.trackEventWithParameters(
       MetaMetricsEvents.TRANSACTIONS_CANCEL_SIGNATURE,
       this.getTrackingParams(),
     );
@@ -175,7 +174,7 @@ class SignatureRequest extends PureComponent {
    */
   onConfirm = () => {
     this.props.onConfirm();
-    trackLegacyEvent(
+    Analytics.trackEventWithParameters(
       MetaMetricsEvents.TRANSACTIONS_CONFIRM_SIGNATURE,
       this.getTrackingParams(),
     );
@@ -195,7 +194,7 @@ class SignatureRequest extends PureComponent {
   };
 
   goToWarning = () => {
-    this.props.onCancel();
+    this.props.onReject();
     this.props.navigation.navigate('Webview', {
       screen: 'SimpleWebview',
       params: {
@@ -239,7 +238,11 @@ class SignatureRequest extends PureComponent {
     return (
       <View style={styles.actionViewChild}>
         <View style={styles.accountInfoCardWrapper}>
-          <AccountInfoCard operation="signing" fromAddress={fromAddress} />
+          <AccountInfoCard
+            operation="signing"
+            fromAddress={fromAddress}
+            origin={title}
+          />
         </View>
         <TouchableOpacity
           style={styles.children}
@@ -278,7 +281,7 @@ class SignatureRequest extends PureComponent {
   };
 
   renderSignatureRequest() {
-    const { showWarning, currentPageInformation, type } = this.props;
+    const { showWarning, type } = this.props;
     let expandedHeight;
     const styles = this.getStyles();
 
@@ -289,21 +292,17 @@ class SignatureRequest extends PureComponent {
       }
     }
     return (
-      <View style={[styles.root, expandedHeight]}>
+      <View testID={this.props.testID} style={[styles.root, expandedHeight]}>
         <ActionView
           cancelTestID={'request-signature-cancel-button'}
           confirmTestID={'request-signature-confirm-button'}
           cancelText={strings('signature_request.cancel')}
           confirmText={strings('signature_request.sign')}
-          onCancelPress={this.onCancel}
+          onCancelPress={this.onReject}
           onConfirmPress={this.onConfirm}
           confirmButtonMode="sign"
         >
           <View>
-            <TransactionHeader
-              currentPageInformation={currentPageInformation}
-              type={type}
-            />
             <View style={styles.signingInformation}>
               <Text style={styles.signText}>
                 {strings('signature_request.signing')}

@@ -1,21 +1,21 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { StyleSheet, View, Text, InteractionManager } from 'react-native';
-import { connect } from 'react-redux';
 import URL from 'url-parse';
+import { useSelector } from 'react-redux';
+import { fontStyles } from '../../../styles/common';
+import { strings } from '../../../../locales/i18n';
 import ActionView from '../ActionView';
-import { MetaMetricsEvents } from '../../../core/Analytics';
 import { renderFromTokenMinimalUnit } from '../../../util/number';
 import TokenImage from '../../UI/TokenImage';
 import Device from '../../../util/device';
-import Engine from '../../../core/Engine';
-import { trackEvent } from '../../../util/analyticsV2';
+import { MetaMetricsEvents } from '../../../core/Analytics';
+import AnalyticsV2 from '../../../util/analyticsV2';
+
 import useTokenBalance from '../../hooks/useTokenBalance';
 import { useTheme } from '../../../util/theme';
 import NotificationManager from '../../../core/NotificationManager';
-import { fontStyles } from '../../../styles/common';
-import { strings } from '../../../../locales/i18n';
-import { safeToChecksumAddress } from '../../../util/address';
+import { selectChainId } from '../../../selectors/networkController';
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -90,36 +90,27 @@ const createStyles = (colors) =>
 const WatchAssetRequest = ({
   suggestedAssetMeta,
   currentPageInformation,
-  selectedAddress,
   onCancel,
   onConfirm,
 }) => {
   const { asset, interactingAddress } = suggestedAssetMeta;
-  let [balance] = useTokenBalance(asset.address, selectedAddress);
-  balance = renderFromTokenMinimalUnit(balance, asset.decimals);
+  // TODO - Once TokensController is updated, interactingAddress should always be defined
   const { colors } = useTheme();
   const styles = createStyles(colors);
-
-  useEffect(
-    () => async () => {
-      const { TokensController } = Engine.context;
-      typeof suggestedAssetMeta !== undefined &&
-        (await TokensController.rejectWatchAsset(suggestedAssetMeta.id));
-    },
-    [suggestedAssetMeta],
-  );
+  const [balance, , error] = useTokenBalance(asset.address, interactingAddress);
+  const chainId = useSelector(selectChainId);
+  const balanceWithSymbol = error
+    ? strings('transaction.failed')
+    : `${renderFromTokenMinimalUnit(balance, asset.decimals)} ${asset.symbol}`;
 
   const getAnalyticsParams = () => {
     try {
-      const { NetworkController } = Engine.context;
-      const { chainId } = NetworkController?.state?.providerConfig || {};
       const url = new URL(currentPageInformation?.url);
 
       return {
         token_address: asset?.address,
         token_symbol: asset?.symbol,
         dapp_host_name: url?.host,
-        dapp_url: currentPageInformation?.url,
         chain_id: chainId,
         source: 'Dapp suggested (watchAsset)',
       };
@@ -129,15 +120,12 @@ const WatchAssetRequest = ({
   };
 
   const onConfirmPress = async () => {
-    const { TokensController } = Engine.context;
-    await TokensController.acceptWatchAsset(
-      suggestedAssetMeta.id,
-      // TODO - Ideally, this is already checksummed.
-      safeToChecksumAddress(interactingAddress),
-    );
-    onConfirm && onConfirm();
+    await onConfirm();
     InteractionManager.runAfterInteractions(() => {
-      trackEvent(MetaMetricsEvents.TOKEN_ADDED, getAnalyticsParams());
+      AnalyticsV2.trackEvent(
+        MetaMetricsEvents.TOKEN_ADDED,
+        getAnalyticsParams(),
+      );
       NotificationManager.showSimpleNotification({
         status: `simple_notification`,
         duration: 5000,
@@ -197,9 +185,7 @@ const WatchAssetRequest = ({
               </View>
 
               <View style={styles.infoBalance}>
-                <Text style={styles.text}>
-                  {balance} {asset.symbol}
-                </Text>
+                <Text style={styles.text}>{balanceWithSymbol}</Text>
               </View>
             </View>
           </View>
@@ -223,18 +209,9 @@ WatchAssetRequest.propTypes = {
    */
   suggestedAssetMeta: PropTypes.object,
   /**
-   * Current public address
-   */
-  selectedAddress: PropTypes.string,
-  /**
    * Object containing current page title, url, and icon href
    */
   currentPageInformation: PropTypes.object,
 };
 
-const mapStateToProps = (state) => ({
-  selectedAddress:
-    state.engine.backgroundState.PreferencesController.selectedAddress,
-});
-
-export default connect(mapStateToProps)(WatchAssetRequest);
+export default WatchAssetRequest;

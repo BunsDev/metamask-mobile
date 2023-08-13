@@ -3,21 +3,16 @@ import PropTypes from 'prop-types';
 import { TouchableOpacity, StyleSheet, View } from 'react-native';
 import { query } from '@metamask/controller-utils';
 import { connect } from 'react-redux';
-import URL from 'url-parse';
 
 import { fontStyles } from '../../../../styles/common';
 import { strings } from '../../../../../locales/i18n';
 import {
-  getNetworkTypeById,
   findBlockExplorerForRpc,
   getBlockExplorerName,
   isMainNet,
   isMultiLayerFeeNetwork,
+  getBlockExplorerTxUrl,
 } from '../../../../util/networks';
-import {
-  getEtherscanTransactionUrl,
-  getEtherscanBaseUrl,
-} from '../../../../util/etherscan';
 import Logger from '../../../../util/Logger';
 import EthereumAddress from '../../EthereumAddress';
 import TransactionSummary from '../../../Views/TransactionSummary';
@@ -33,8 +28,19 @@ import Engine from '../../../../core/Engine';
 import decodeTransaction from '../../TransactionElement/utils';
 import {
   selectChainId,
+  selectProviderConfig,
   selectTicker,
 } from '../../../../selectors/networkController';
+import {
+  selectConversionRate,
+  selectCurrentCurrency,
+} from '../../../../selectors/currencyRateController';
+import { selectTokensByAddress } from '../../../../selectors/tokensController';
+import { selectContractExchangeRates } from '../../../../selectors/tokenRatesController';
+import {
+  selectFrequentRpcList,
+  selectSelectedAddress,
+} from '../../../../selectors/preferencesController';
 
 const createStyles = (colors) =>
   StyleSheet.create({
@@ -84,9 +90,9 @@ class TransactionDetails extends PureComponent {
      */
     chainId: PropTypes.string,
     /**
-     * Object representing the selected the selected network
+     * Object representing the configuration of the current selected network
      */
-    network: PropTypes.object,
+    providerConfig: PropTypes.object,
     /**
      * Object corresponding to a transaction, containing transaction object, networkId and transaction hash string
      */
@@ -196,9 +202,7 @@ class TransactionDetails extends PureComponent {
 
   componentDidMount = () => {
     const {
-      network: {
-        providerConfig: { rpcTarget, type },
-      },
+      providerConfig: { rpcTarget, type },
       frequentRpcList,
     } = this.props;
     let blockExplorer;
@@ -216,35 +220,20 @@ class TransactionDetails extends PureComponent {
       navigation,
       transactionObject: { networkID },
       transactionDetails: { transactionHash },
-      network: {
-        providerConfig: { type },
-      },
+      providerConfig: { type },
       close,
     } = this.props;
     const { rpcBlockExplorer } = this.state;
     try {
-      if (type === RPC) {
-        const url = `${rpcBlockExplorer}/tx/${transactionHash}`;
-        const title = new URL(rpcBlockExplorer).hostname;
-        navigation.push('Webview', {
-          screen: 'SimpleWebview',
-          params: { url, title },
-        });
-      } else {
-        const network = getNetworkTypeById(networkID);
-        const url = getEtherscanTransactionUrl(network, transactionHash);
-        const etherscan_url = getEtherscanBaseUrl(network).replace(
-          'https://',
-          '',
-        );
-        navigation.push('Webview', {
-          screen: 'SimpleWebview',
-          params: {
-            url,
-            title: etherscan_url,
-          },
-        });
-      }
+      const { url, title } = getBlockExplorerTxUrl(
+        type,
+        transactionHash,
+        rpcBlockExplorer,
+      );
+      navigation.push('Webview', {
+        screen: 'SimpleWebview',
+        params: { url, title },
+      });
       close && close();
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -424,27 +413,16 @@ class TransactionDetails extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
-  network: state.engine.backgroundState.NetworkController,
+  providerConfig: selectProviderConfig(state),
   chainId: selectChainId(state),
-  frequentRpcList:
-    state.engine.backgroundState.PreferencesController.frequentRpcList,
-  selectedAddress:
-    state.engine.backgroundState.PreferencesController.selectedAddress,
+  frequentRpcList: selectFrequentRpcList(state),
+  selectedAddress: selectSelectedAddress(state),
   transactions: state.engine.backgroundState.TransactionController.transactions,
   ticker: selectTicker(state),
-  tokens: state.engine.backgroundState.TokensController.tokens.reduce(
-    (tokens, token) => {
-      tokens[token.address] = token;
-      return tokens;
-    },
-    {},
-  ),
-  contractExchangeRates:
-    state.engine.backgroundState.TokenRatesController.contractExchangeRates,
-  conversionRate:
-    state.engine.backgroundState.CurrencyRateController.conversionRate,
-  currentCurrency:
-    state.engine.backgroundState.CurrencyRateController.currentCurrency,
+  tokens: selectTokensByAddress(state),
+  contractExchangeRates: selectContractExchangeRates(state),
+  conversionRate: selectConversionRate(state),
+  currentCurrency: selectCurrentCurrency(state),
   primaryCurrency: state.settings.primaryCurrency,
   swapsTransactions:
     state.engine.backgroundState.TransactionController.swapsTransactions || {},

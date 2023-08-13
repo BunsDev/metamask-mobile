@@ -11,7 +11,6 @@ import {
   AppState,
   StyleSheet,
   View,
-  Linking,
   PushNotificationIOS, // eslint-disable-line react-native/split-platform-components
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
@@ -24,12 +23,11 @@ import Engine from '../../../core/Engine';
 import AppConstants from '../../../core/AppConstants';
 import PushNotification from 'react-native-push-notification';
 import I18n, { strings } from '../../../../locales/i18n';
-import LockManager from '../../../core/LockManager';
 import FadeOutOverlay from '../../UI/FadeOutOverlay';
 import Device from '../../../util/device';
 import BackupAlert from '../../UI/BackupAlert';
 import Notification from '../../UI/Notification';
-import FiatOrders from '../../UI/FiatOnRampAggregator';
+import RampOrders from '../../UI/Ramp';
 import {
   showTransactionNotification,
   hideCurrentNotification,
@@ -52,14 +50,10 @@ import { createStackNavigator } from '@react-navigation/stack';
 import ReviewModal from '../../UI/ReviewModal';
 import { useTheme } from '../../../util/theme';
 import RootRPCMethodsUI from './RootRPCMethodsUI';
-import usePrevious from '../../hooks/usePrevious';
 import { colors as importedColors } from '../../../styles/common';
-import WarningAlert from '../../../components/UI/WarningAlert';
-import { KOVAN, RINKEBY, ROPSTEN } from '../../../constants/network';
-import { MM_DEPRECATED_NETWORKS } from '../../../constants/urls';
 import {
   getNetworkImageSource,
-  getNetworkNameFromProvider,
+  getNetworkNameFromProviderConfig,
 } from '../../../util/networks';
 import {
   ToastContext,
@@ -67,10 +61,15 @@ import {
 } from '../../../component-library/components/Toast';
 import { useEnableAutomaticSecurityChecks } from '../../hooks/EnableAutomaticSecurityChecks';
 import { useMinimumVersions } from '../../hooks/MinimumVersions';
+import navigateTermsOfUse from '../../../util/termsOfUse/termsOfUse';
 import {
   selectProviderConfig,
   selectProviderType,
 } from '../../../selectors/networkController';
+import WarningAlert from '../../../components/UI/WarningAlert/WarningAlert';
+import { LINEA_MAINNET } from '../../../constants/network';
+import jsonRpcRequest from '../../../util/jsonRpcRequest';
+import { LINEA_MAINNET_RPC_URL } from '../../../constants/urls';
 
 const Stack = createStackNavigator();
 
@@ -92,18 +91,15 @@ const Main = (props) => {
   const [forceReload, setForceReload] = useState(false);
   const [showRemindLaterModal, setShowRemindLaterModal] = useState(false);
   const [skipCheckbox, setSkipCheckbox] = useState(false);
-  const [showDeprecatedAlert, setShowDeprecatedAlert] = useState(true);
+  const [showLineaMainnetAlert, setShowLineaMainnetAlert] = useState(false);
   const { colors } = useTheme();
   const styles = createStyles(colors);
 
   const backgroundMode = useRef(false);
   const locale = useRef(I18n.locale);
-  const lockManager = useRef();
   const removeConnectionStatusListener = useRef();
 
   const removeNotVisibleNotifications = props.removeNotVisibleNotifications;
-
-  const prevLockTime = usePrevious(props.lockTime);
 
   useEnableAutomaticSecurityChecks();
   useMinimumVersions();
@@ -221,23 +217,23 @@ const Main = (props) => {
   /**
    * Current network
    */
-  const networkProvider = useSelector(selectProviderConfig);
-  const prevNetworkProvider = useRef(undefined);
+  const providerConfig = useSelector(selectProviderConfig);
+  const previousProviderConfig = useRef(undefined);
   const { toastRef } = useContext(ToastContext);
 
   // Show network switch confirmation.
   useEffect(() => {
     if (
-      prevNetworkProvider.current &&
-      (networkProvider.chainId !== prevNetworkProvider.current.chainId ||
-        networkProvider.type !== prevNetworkProvider.current.type)
+      previousProviderConfig.current &&
+      (providerConfig.chainId !== previousProviderConfig.current.chainId ||
+        providerConfig.type !== previousProviderConfig.current.type)
     ) {
-      const { type, chainId } = networkProvider;
+      const { type, chainId } = providerConfig;
       const networkImage = getNetworkImageSource({
         networkType: type,
         chainId,
       });
-      const networkName = getNetworkNameFromProvider(networkProvider);
+      const networkName = getNetworkNameFromProviderConfig(providerConfig);
       toastRef?.current?.showToast({
         variant: ToastVariants.Network,
         labelOptions: [
@@ -251,17 +247,14 @@ const Main = (props) => {
         networkImageSource: networkImage,
       });
     }
-    prevNetworkProvider.current = networkProvider;
-  }, [networkProvider, toastRef]);
+    previousProviderConfig.current = providerConfig;
+  }, [providerConfig, toastRef]);
 
   useEffect(() => {
     if (locale.current !== I18n.locale) {
       locale.current = I18n.locale;
       initForceReload();
       return;
-    }
-    if (prevLockTime !== props.lockTime) {
-      lockManager.current && lockManager.current.updateLockTime(props.lockTime);
     }
   });
 
@@ -271,8 +264,10 @@ const Main = (props) => {
   }, [removeNotVisibleNotifications]);
 
   useEffect(() => {
-    AppState.addEventListener('change', handleAppStateChange);
-    lockManager.current = new LockManager(props.navigation, props.lockTime);
+    const appStateListener = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
     PushNotification.configure({
       requestPermissions: false,
       onNotification: (notification) => {
@@ -313,32 +308,43 @@ const Main = (props) => {
     }, 1000);
 
     return function cleanup() {
-      AppState.removeEventListener('change', handleAppStateChange);
-      lockManager.current.stopListening();
+      appStateListener.remove();
       removeConnectionStatusListener.current &&
         removeConnectionStatusListener.current();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openDeprecatedNetworksArticle = () => {
-    Linking.openURL(MM_DEPRECATED_NETWORKS);
-  };
+  const checkLineaMainnetAvailability = useCallback(async () => {
+    if (props.providerType === LINEA_MAINNET) {
+      try {
+        await jsonRpcRequest(LINEA_MAINNET_RPC_URL, 'eth_blockNumber', []);
+      } catch (e) {
+        setShowLineaMainnetAlert(true);
+      }
+    }
+  }, [props.providerType]);
 
-  const renderDeprecatedNetworkAlert = (network, backUpSeedphraseVisible) => {
-    const { wizardStep } = props;
-    const { type } = network.providerConfig;
-    if (
-      (type === ROPSTEN || type === RINKEBY || type === KOVAN) &&
-      showDeprecatedAlert &&
-      !wizardStep
-    ) {
+  useEffect(() => {
+    checkLineaMainnetAvailability();
+  }, [checkLineaMainnetAvailability]);
+
+  const termsOfUse = useCallback(async () => {
+    if (props.navigation) {
+      await navigateTermsOfUse(props.navigation.navigate);
+    }
+  }, [props.navigation]);
+
+  useEffect(() => {
+    termsOfUse();
+  }, [termsOfUse]);
+
+  const renderLineaMainnetAlert = (network) => {
+    if (network === LINEA_MAINNET && showLineaMainnetAlert) {
       return (
         <WarningAlert
-          text={strings('networks.deprecated_network_msg')}
-          dismissAlert={() => setShowDeprecatedAlert(false)}
-          onPressLearnMore={openDeprecatedNetworksArticle}
-          precedentAlert={backUpSeedphraseVisible}
+          text={strings('networks.linea_mainnet_not_released_alert')}
+          dismissAlert={() => setShowLineaMainnetAlert(false)}
         />
       );
     }
@@ -355,16 +361,14 @@ const Main = (props) => {
         <GlobalAlert />
         <FadeOutOverlay />
         <Notification navigation={props.navigation} />
-        <FiatOrders />
+        <RampOrders />
         <SwapsLiveness />
         <BackupAlert
           onDismiss={toggleRemindLater}
           navigation={props.navigation}
         />
-        {renderDeprecatedNetworkAlert(
-          props.network,
-          props.backUpSeedphraseVisible,
-        )}
+        {renderLineaMainnetAlert(props.providerType)}
+
         <SkipAccountSecurityModal
           modalVisible={showRemindLaterModal}
           onCancel={skipAccountModalSecureNow}
@@ -386,10 +390,6 @@ Main.propTypes = {
    * Object that represents the navigator
    */
   navigation: PropTypes.object,
-  /**
-   * Time to auto-lock the app after it goes in background mode
-   */
-  lockTime: PropTypes.number,
   /**
    * Dispatch showing a transaction notification
    */
@@ -427,27 +427,11 @@ Main.propTypes = {
    * Object that represents the current route info like params passed to it
    */
   route: PropTypes.object,
-  /**
-   * Object representing the selected network
-   */
-  network: PropTypes.object,
-  /**
-   * redux flag that indicates if the alert should be shown
-   */
-  backUpSeedphraseVisible: PropTypes.bool,
-  /**
-   * Onboarding wizard step.
-   */
-  wizardStep: PropTypes.number,
 };
 
 const mapStateToProps = (state) => ({
-  lockTime: state.settings.lockTime,
   thirdPartyApiMode: state.privacy.thirdPartyApiMode,
   providerType: selectProviderType(state),
-  network: state.engine.backgroundState.NetworkController,
-  backUpSeedphraseVisible: state.user.backUpSeedphraseVisible,
-  wizardStep: state.wizard.step,
 });
 
 const mapDispatchToProps = (dispatch) => ({
