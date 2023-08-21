@@ -419,7 +419,7 @@
     "jetifier": "2.0.0",
     "lint-staged": "10.5.4",
     "metro": "0.72.3",
-    "metro-react-native-babel-preset": "0.73.9",
+    "metro-react-native-babel-preset": "0.77.0",
     "multiple-cucumber-html-reporter": "^3.0.1",
     "nock": "^13.3.1",
     "octonode": "0.10.2",
