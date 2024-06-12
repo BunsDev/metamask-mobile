@@ -309,7 +309,7 @@
     "react-native-v8": "^0.62.2-patch.1",
     "react-native-vector-icons": "6.4.2",
     "react-native-video": "5.2.1",
-    "react-native-view-shot": "^3.1.2",
+    "react-native-view-shot": "^3.8.0",
     "react-native-webrtc": "^106.0.0-beta.7",
     "react-native-webview": "11.13.0",
     "react-redux": "7.2.4",
