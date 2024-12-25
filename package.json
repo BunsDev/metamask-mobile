@@ -356,7 +356,7 @@
     "@storybook/addon-links": "^5.3",
     "@storybook/addon-ondevice-actions": "^5.3.23",
     "@storybook/addon-ondevice-knobs": "^5.3.25",
-    "@storybook/react-native": "^5.3.25",
+    "@storybook/react-native": "^7.6.20",
     "@testing-library/react": "14.0.0",
     "@testing-library/react-hooks": "^8.0.1",
     "@testing-library/react-native": "12.1.2",
