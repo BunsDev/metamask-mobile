@@ -5260,10 +5260,10 @@
     tweetnacl "^1.0.3"
     tweetnacl-util "^0.15.1"
 
-"@metamask/etherscan-link@^2.0.0":
-  version "2.1.0"
-  resolved "https://registry.yarnpkg.com/@metamask/etherscan-link/-/etherscan-link-2.1.0.tgz#c0be8e68445b7b83cf85bcc03a56cdf8e256c973"
-  integrity sha512-ADuWlTUkFfN2vXlz81Bg/0BA+XRor+CdK1055p6k7H6BLIPoDKn9SBOFld9haQFuR9cKh/JYHcnlSIv5R4fUEw==
+"@metamask/etherscan-link@^3.0.0":
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/@metamask/etherscan-link/-/etherscan-link-3.0.0.tgz#264610dff793c1d1da30814a48612d69d5f59d02"
+  integrity sha512-JSHrHRTKX/ZqCgxpiVN4jYVkamHCKdAz7+CFPMPgEen57+pYASg/gbEd8WEFmyrmh+OnQXdkBJB23tGdkdxBkQ==
 
 "@metamask/gas-fee-controller@4.0.0":
   version "4.0.0"
