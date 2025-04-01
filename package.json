@@ -246,7 +246,7 @@
     "pify": "4.0.1",
     "prop-types": "15.7.2",
     "pump": "3.0.0",
-    "punycode": "^2.1.1",
+    "punycode": "^2.3.1",
     "qs": "6.7.3",
     "query-string": "^6.12.1",
     "randomfill": "^1.0.4",
