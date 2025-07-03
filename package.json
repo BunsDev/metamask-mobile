@@ -338,7 +338,7 @@
     "@actions/core": "^1.10.0",
     "@actions/github": "^5.1.1",
     "@babel/core": "^7.20.0",
-    "@babel/preset-env": "^7.20.0",
+    "@babel/preset-env": "^7.28.0",
     "@babel/runtime": "^7.20.0",
     "@cucumber/message-streams": "^4.0.1",
     "@cucumber/messages": "^22.0.0",
